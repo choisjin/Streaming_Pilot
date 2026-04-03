@@ -40,6 +40,19 @@ function MainApp() {
   const fetchSystemInfo = useStreamStore((s) => s.fetchSystemInfo)
   const { sendAction } = useInputCapture(activePanel)
   const [vButtonsVisible, setVButtonsVisible] = useState(false)
+  const [mouseMode, setMouseMode] = useState<'L' | 'R' | 'E'>('L')
+
+  // Sync mouse mode to all panels
+  useEffect(() => {
+    document.querySelectorAll('[data-mouse-lock]').forEach((el) => {
+      (el as HTMLElement).dataset.mouseSwap = mouseMode === 'R' ? 'true' : 'false';
+      (el as HTMLElement).dataset.mouseMode = mouseMode
+    })
+  }, [mouseMode])
+
+  const cycleMouseMode = useCallback(() => {
+    setMouseMode((m) => m === 'L' ? 'R' : m === 'R' ? 'E' : 'L')
+  }, [])
 
   useEffect(() => {
     fetchSystemInfo()
@@ -139,6 +152,8 @@ function MainApp() {
         onAction={sendAction}
         visible={vButtonsVisible}
         onToggle={() => setVButtonsVisible(!vButtonsVisible)}
+        mouseMode={mouseMode}
+        onMouseModeChange={cycleMouseMode}
       />
     </div>
   )

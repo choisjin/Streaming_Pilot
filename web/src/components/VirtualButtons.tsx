@@ -1,4 +1,4 @@
-// 가상 버튼 패널 — 우클릭, 커스텀 키 매크로
+// 가상 버튼 패널 — 우클릭, 커스텀 키 매크로, 마우스 모드 토글
 import { useState, useCallback, useEffect } from 'react'
 
 interface VirtualButton {
@@ -19,16 +19,15 @@ interface VirtualButtonsProps {
   onAction: (action: ButtonAction) => void
   visible: boolean
   onToggle: () => void
+  mouseMode: 'L' | 'R' | 'E'
+  onMouseModeChange: () => void
 }
 
-// Fixed buttons (cannot be deleted)
 const FIXED_BUTTON_IDS = new Set([
   'esc', 'esc2', 'enter', 'tab', 'space', 'alt-1', 'alt-2',
 ])
 
-// Default buttons
 const DEFAULT_BUTTONS: VirtualButton[] = [
-  // Fixed buttons (삭제 불가)
   { id: 'esc', label: 'ESC', action: { type: 'key', code: 'Escape' }, color: 'bg-orange-600/30' },
   { id: 'esc2', label: 'ESCx2', action: { type: 'combo', codes: ['Escape', '_delay50', 'Escape'] }, color: 'bg-orange-600/30' },
   { id: 'enter', label: 'Enter', action: { type: 'key', code: 'Enter' }, color: 'bg-orange-600/30' },
@@ -36,7 +35,6 @@ const DEFAULT_BUTTONS: VirtualButton[] = [
   { id: 'space', label: 'Space', action: { type: 'key', code: 'Space' }, color: 'bg-orange-600/30' },
   { id: 'alt-1', label: 'Alt+1', action: { type: 'combo', codes: ['AltLeft', 'Digit1'] }, color: 'bg-purple-600/30' },
   { id: 'alt-2', label: 'Alt+2', action: { type: 'combo', codes: ['AltLeft', 'Digit2'] }, color: 'bg-purple-600/30' },
-  // Removable buttons
   { id: 'rclick', label: 'R-Click', icon: '🖱️', action: { type: 'click', button: 'right' }, color: 'bg-red-600/30' },
   { id: 'mclick', label: 'M-Click', icon: '🖱️', action: { type: 'click', button: 'middle' }, color: 'bg-yellow-600/30' },
   { id: 'ctrl-c', label: 'Ctrl+C', action: { type: 'combo', codes: ['ControlLeft', 'KeyC'] }, color: 'bg-blue-600/30' },
@@ -53,14 +51,18 @@ const DEFAULT_BUTTONS: VirtualButton[] = [
 
 const STORAGE_KEY = 'ideality_custom_buttons'
 
-export default function VirtualButtons({ onAction, visible, onToggle }: VirtualButtonsProps) {
+const MODE_COLORS = {
+  L: 'bg-gray-600 text-gray-200',
+  R: 'bg-red-600 text-white',
+  E: 'bg-green-600 text-white',
+}
+
+export default function VirtualButtons({ onAction, visible, onToggle, mouseMode, onMouseModeChange }: VirtualButtonsProps) {
   const [buttons, setButtons] = useState<VirtualButton[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       return saved ? JSON.parse(saved) : DEFAULT_BUTTONS
-    } catch {
-      return DEFAULT_BUTTONS
-    }
+    } catch { return DEFAULT_BUTTONS }
   })
   const [editing, setEditing] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -68,7 +70,6 @@ export default function VirtualButtons({ onAction, visible, onToggle }: VirtualB
   const [newAction, setNewAction] = useState('')
   const [newType, setNewType] = useState<'key' | 'combo' | 'text'>('key')
 
-  // Save to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(buttons))
   }, [buttons])
@@ -107,9 +108,7 @@ export default function VirtualButtons({ onAction, visible, onToggle }: VirtualB
         onClick={onToggle}
         className="fixed bottom-4 right-4 w-10 h-10 bg-gray-800 border border-gray-600 rounded-full flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 z-50 shadow-lg"
         title="Virtual buttons"
-      >
-        ⌨
-      </button>
+      >⌨</button>
     )
   }
 
@@ -127,35 +126,45 @@ export default function VirtualButtons({ onAction, visible, onToggle }: VirtualB
         </div>
       </div>
 
-      {/* Buttons grid */}
-      <div className="flex flex-wrap gap-1 p-2 max-h-32 overflow-y-auto">
-        {buttons.map((btn) => (
-          <div key={btn.id} className="relative">
-            <button
-              onTouchStart={(e) => { e.preventDefault(); handlePress(btn) }}
-              onMouseDown={() => handlePress(btn)}
-              className={`px-2.5 py-1.5 rounded text-xs font-medium select-none active:scale-95 transition-transform ${
-                btn.color || 'bg-gray-700/50'
-              } text-gray-200 hover:brightness-125 border border-gray-600/50`}
-            >
-              {btn.icon ? `${btn.icon} ${btn.label}` : btn.label}
-            </button>
-            {editing && !FIXED_BUTTON_IDS.has(btn.id) && (
+      {/* Buttons grid + mouse mode toggle */}
+      <div className="flex gap-1 p-2">
+        <div className="flex flex-wrap gap-1 flex-1 max-h-32 overflow-y-auto">
+          {buttons.map((btn) => (
+            <div key={btn.id} className="relative">
               <button
-                onClick={() => handleRemove(btn.id)}
-                className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-[8px] text-white flex items-center justify-center"
-              >✕</button>
-            )}
-          </div>
-        ))}
+                onTouchStart={(e) => { e.stopPropagation(); handlePress(btn) }}
+                onMouseDown={(e) => { e.stopPropagation(); handlePress(btn) }}
+                className={`px-2.5 py-1.5 rounded text-xs font-medium select-none active:scale-95 transition-transform ${
+                  btn.color || 'bg-gray-700/50'
+                } text-gray-200 hover:brightness-125 border border-gray-600/50`}
+              >
+                {btn.icon ? `${btn.icon} ${btn.label}` : btn.label}
+              </button>
+              {editing && !FIXED_BUTTON_IDS.has(btn.id) && (
+                <button onClick={() => handleRemove(btn.id)}
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-[8px] text-white flex items-center justify-center">✕</button>
+              )}
+            </div>
+          ))}
+          {editing && (
+            <button onClick={() => setShowAdd(true)}
+              className="px-2.5 py-1.5 rounded text-xs border border-dashed border-gray-500 text-gray-500 hover:text-white hover:border-white">+ Add</button>
+          )}
+        </div>
 
-        {/* Add button (edit mode) */}
-        {editing && (
-          <button
-            onClick={() => setShowAdd(true)}
-            className="px-2.5 py-1.5 rounded text-xs border border-dashed border-gray-500 text-gray-500 hover:text-white hover:border-white"
-          >+ Add</button>
-        )}
+        {/* Mouse mode toggle — 우측 고정, 크게 */}
+        <button
+          onPointerUp={(e) => { e.stopPropagation(); onMouseModeChange() }}
+          onTouchStart={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          className={`w-14 h-14 rounded-lg flex flex-col items-center justify-center text-lg font-bold shadow-lg border select-none flex-shrink-0 active:scale-95 transition-transform ${MODE_COLORS[mouseMode]}`}
+          title={mouseMode === 'L' ? 'Left Click' : mouseMode === 'R' ? 'Right Click' : 'E-Key'}
+        >
+          {mouseMode}
+          <span className="text-[8px] font-normal opacity-70">
+            {mouseMode === 'L' ? 'Click' : mouseMode === 'R' ? 'R-Click' : 'E-Key'}
+          </span>
+        </button>
       </div>
 
       {/* Add dialog */}
@@ -164,28 +173,19 @@ export default function VirtualButtons({ onAction, visible, onToggle }: VirtualB
           <div className="flex gap-1">
             {(['key', 'combo', 'text'] as const).map((t) => (
               <button key={t} onClick={() => setNewType(t)}
-                className={`px-2 py-0.5 rounded text-[10px] ${newType === t ? 'bg-blue-600' : 'bg-gray-700'}`}>
-                {t}
-              </button>
+                className={`px-2 py-0.5 rounded text-[10px] ${newType === t ? 'bg-blue-600' : 'bg-gray-700'}`}>{t}</button>
             ))}
           </div>
           <div className="flex gap-1">
-            <input
-              value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
-              placeholder="Label" className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs"
-            />
-            <input
-              value={newAction} onChange={(e) => setNewAction(e.target.value)}
+            <input value={newLabel} onChange={(e) => setNewLabel(e.target.value)}
+              placeholder="Label" className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs" />
+            <input value={newAction} onChange={(e) => setNewAction(e.target.value)}
               placeholder={newType === 'combo' ? 'ControlLeft+KeyC' : newType === 'text' ? 'Hello' : 'F5'}
-              className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs"
-            />
-            <button onClick={handleAdd}
-              className="px-2 py-1 bg-blue-600 rounded text-xs">Add</button>
-            <button onClick={() => setShowAdd(false)}
-              className="px-2 py-1 bg-gray-700 rounded text-xs">Cancel</button>
+              className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs" />
+            <button onClick={handleAdd} className="px-2 py-1 bg-blue-600 rounded text-xs">Add</button>
+            <button onClick={() => setShowAdd(false)} className="px-2 py-1 bg-gray-700 rounded text-xs">Cancel</button>
           </div>
-          <button onClick={handleReset}
-            className="text-[10px] text-gray-500 hover:text-red-400">Reset to defaults</button>
+          <button onClick={handleReset} className="text-[10px] text-gray-500 hover:text-red-400">Reset to defaults</button>
         </div>
       )}
     </div>
