@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.bkit/
+node_modules/
+web/dist/
+*.egg-info/
+auth_config.json
+*.pem
+*.json.bak
+.cloudflared/
