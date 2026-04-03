@@ -577,6 +577,20 @@ async def focus_window(stream_id: int) -> dict[str, str]:
     return {"status": "not_found"}
 
 
+@app.post("/api/admin/restart")
+async def restart_server() -> dict[str, str]:
+    """서버 재시작."""
+    import os, signal
+    logger.info("Server restart requested")
+
+    async def _restart():
+        await asyncio.sleep(0.5)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    asyncio.create_task(_restart())
+    return {"status": "restarting"}
+
+
 @app.get("/api/arduino/status")
 async def get_arduino_status() -> dict[str, Any]:
     """Arduino 연결 상태."""

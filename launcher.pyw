@@ -21,6 +21,7 @@ class IdealityLauncher:
         self.process = None
         self.tunnel_process = None
         self.running = False
+        self.auto_restart = True  # API 재시작 요청 시 자동 재시작
 
         self.root = tk.Tk()
         self.root.title("Ideality Remote Desktop")
@@ -96,6 +97,7 @@ class IdealityLauncher:
         if self.running:
             return
 
+        self.auto_restart = True
         self.log("Starting server...")
         self.start_btn.config(state="disabled")
 
@@ -121,7 +123,14 @@ class IdealityLauncher:
                         self.root.after(0, self.log, line[:80])
 
                 self.running = False
-                self.root.after(0, self._update_ui_stopped)
+
+                # Auto-restart if server died (API restart request)
+                if self.auto_restart:
+                    self.root.after(0, self.log, "Server stopped. Auto-restarting...")
+                    import time; time.sleep(1)
+                    self.root.after(0, self.start_server)
+                else:
+                    self.root.after(0, self._update_ui_stopped)
 
             except Exception as e:
                 self.root.after(0, self.log, f"ERROR: {e}")
@@ -130,6 +139,7 @@ class IdealityLauncher:
         threading.Thread(target=run, daemon=True).start()
 
     def stop_server(self):
+        self.auto_restart = False  # 수동 종료 시 재시작 안 함
         if self.tunnel_process:
             self.log("Stopping tunnel...")
             self.tunnel_process.terminate()
