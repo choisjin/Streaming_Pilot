@@ -5,7 +5,7 @@ const API_BASE = ''
 
 export type LayoutMode = 'grid' | 'tabs'
 
-interface PanelState {
+export interface PanelState {
   streamId: number
   title: string
   connection: ConnectionState
@@ -14,8 +14,12 @@ interface PanelState {
   mouseLocked: boolean
 }
 
-interface LayoutSettings {
-  mode: LayoutMode
+export interface TabState {
+  id: string
+  label: string
+  type: 'desktop' | 'windows'
+  panels: PanelState[]
+  layoutMode: LayoutMode  // grid/tabs within this tab
   cols: number
   rows: number
 }
@@ -25,28 +29,35 @@ interface StreamStore {
   systemInfo: SystemInfo | null
   settingsOpen: boolean
   processListOpen: boolean
-  layout: LayoutSettings
-  activeTab: number
-  activePanel: number  // 현재 선택된 패널 (하이라이트용)
 
-  panels: PanelState[]
+  tabs: TabState[]
+  activeTabId: string
+  activePanel: number  // streamId of selected panel (for toolbar)
+
   processes: ProcessInfo[]
 
-  setSettings: (settings: StreamSettings) => void
-  setSystemInfo: (info: SystemInfo) => void
-  toggleSettings: () => void
-  toggleProcessList: () => void
-  setLayout: (layout: Partial<LayoutSettings>) => void
-  setActiveTab: (streamId: number) => void
-  setActivePanel: (streamId: number) => void
+  // Tab actions
+  setActiveTab: (tabId: string) => void
+  addWindowTab: () => string  // returns new tab id
+  removeWindowTab: (tabId: string) => void
+  setTabLayout: (tabId: string, layout: Partial<{ mode: LayoutMode; cols: number; rows: number }>) => void
 
-  addPanel: (streamId: number, title: string) => void
-  removePanel: (streamId: number) => void
+  // Panel actions within tabs
+  addPanelToTab: (tabId: string, streamId: number, title: string) => void
+  removePanelFromTab: (tabId: string, streamId: number) => void
+  setActivePanel: (streamId: number) => void
   updatePanelConnection: (streamId: number, state: Partial<ConnectionState>) => void
   updatePanelStats: (streamId: number, stats: Partial<WebRTCStats>) => void
   togglePanelInput: (streamId: number) => void
   togglePanelMouseLock: (streamId: number) => void
 
+  // Settings
+  setSettings: (settings: StreamSettings) => void
+  setSystemInfo: (info: SystemInfo) => void
+  toggleSettings: () => void
+  toggleProcessList: () => void
+
+  // API
   updateSettings: (settings: Partial<StreamSettings>) => Promise<void>
   fetchSystemInfo: () => Promise<void>
   fetchProcesses: () => Promise<void>
@@ -54,65 +65,123 @@ interface StreamStore {
   deleteStream: (streamId: number) => Promise<void>
 }
 
+let nextTabId = 1
+
 export const useStreamStore = create<StreamStore>((set) => ({
   settings: { fps: 30, bitrate: '4M', resolution: '1920x1080', adaptive: true, encoder: 'auto' },
   systemInfo: null,
   settingsOpen: false,
   processListOpen: false,
-  layout: { mode: 'grid', cols: 2, rows: 2 },
-  activeTab: 0,
-  activePanel: 0,
 
-  panels: [{ streamId: 0, title: 'Desktop', connection: { status: 'disconnected' }, stats: { fps: 0, bitrate: 0, latency: 0, packetsLost: 0 }, inputEnabled: true, mouseLocked: false }],
-  processes: [],
-
-  setSettings: (settings) => set({ settings }),
-  setSystemInfo: (info) => set({ systemInfo: info }),
-  toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
-  toggleProcessList: () => set((s) => ({ processListOpen: !s.processListOpen })),
-  setLayout: (layout) => set((s) => ({ layout: { ...s.layout, ...layout } })),
-  setActiveTab: (streamId) => set({ activeTab: streamId }),
-  setActivePanel: (streamId) => set({ activePanel: streamId }),
-
-  addPanel: (streamId, title) =>
-    set((s) => ({
-      panels: [...s.panels, {
-        streamId, title,
+  tabs: [
+    {
+      id: 'desktop',
+      label: 'Desktop',
+      type: 'desktop',
+      panels: [{
+        streamId: 0, title: 'Desktop',
         connection: { status: 'disconnected' },
         stats: { fps: 0, bitrate: 0, latency: 0, packetsLost: 0 },
         inputEnabled: true, mouseLocked: false,
       }],
+      layoutMode: 'grid',
+      cols: 1, rows: 1,
+    },
+  ],
+  activeTabId: 'desktop',
+  activePanel: 0,
+  processes: [],
+
+  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+
+  addWindowTab: () => {
+    const id = `win-${nextTabId++}`
+    set((s) => ({
+      tabs: [...s.tabs, {
+        id,
+        label: `Windows ${nextTabId - 1}`,
+        type: 'windows',
+        panels: [],
+        layoutMode: 'grid',
+        cols: 2, rows: 2,
+      }],
+      activeTabId: id,
+    }))
+    return id
+  },
+
+  removeWindowTab: (tabId) =>
+    set((s) => ({
+      tabs: s.tabs.filter((t) => t.id !== tabId),
+      activeTabId: s.activeTabId === tabId ? 'desktop' : s.activeTabId,
     })),
 
-  removePanel: (streamId) =>
+  setTabLayout: (tabId, layout) =>
     set((s) => ({
-      panels: s.panels.filter((p) => p.streamId !== streamId),
-      activeTab: s.activeTab === streamId ? (s.panels[0]?.streamId ?? 0) : s.activeTab,
-      activePanel: s.activePanel === streamId ? (s.panels[0]?.streamId ?? 0) : s.activePanel,
+      tabs: s.tabs.map((t) =>
+        t.id === tabId ? { ...t, ...layout, layoutMode: layout.mode ?? t.layoutMode } : t
+      ),
     })),
+
+  addPanelToTab: (tabId, streamId, title) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) => {
+        if (t.id !== tabId) return t
+        if (t.panels.length >= 4) return t  // max 4 per tab
+        return {
+          ...t,
+          panels: [...t.panels, {
+            streamId, title,
+            connection: { status: 'disconnected' },
+            stats: { fps: 0, bitrate: 0, latency: 0, packetsLost: 0 },
+            inputEnabled: true, mouseLocked: false,
+          }],
+        }
+      }),
+    })),
+
+  removePanelFromTab: (tabId, streamId) =>
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.id === tabId
+          ? { ...t, panels: t.panels.filter((p) => p.streamId !== streamId) }
+          : t
+      ),
+    })),
+
+  setActivePanel: (streamId) => set({ activePanel: streamId }),
 
   updatePanelConnection: (streamId, state) =>
     set((s) => ({
-      panels: s.panels.map((p) =>
-        p.streamId === streamId ? { ...p, connection: { ...p.connection, ...state } } : p
-      ),
+      tabs: s.tabs.map((t) => ({
+        ...t,
+        panels: t.panels.map((p) =>
+          p.streamId === streamId ? { ...p, connection: { ...p.connection, ...state } } : p
+        ),
+      })),
     })),
 
   updatePanelStats: (streamId, stats) =>
     set((s) => ({
-      panels: s.panels.map((p) =>
-        p.streamId === streamId ? { ...p, stats: { ...p.stats, ...stats } } : p
-      ),
+      tabs: s.tabs.map((t) => ({
+        ...t,
+        panels: t.panels.map((p) =>
+          p.streamId === streamId ? { ...p, stats: { ...p.stats, ...stats } } : p
+        ),
+      })),
     })),
 
   togglePanelInput: (streamId) => {
     set((s) => ({
-      panels: s.panels.map((p) =>
-        p.streamId === streamId ? { ...p, inputEnabled: !p.inputEnabled } : p
-      ),
+      tabs: s.tabs.map((t) => ({
+        ...t,
+        panels: t.panels.map((p) =>
+          p.streamId === streamId ? { ...p, inputEnabled: !p.inputEnabled } : p
+        ),
+      })),
     }))
-    // Sync to server
-    const panel = useStreamStore.getState().panels.find((p) => p.streamId === streamId)
+    const store = useStreamStore.getState()
+    const panel = store.tabs.flatMap((t) => t.panels).find((p) => p.streamId === streamId)
     if (panel) {
       fetch(`${API_BASE}/api/admin/input/${streamId}?enabled=${panel.inputEnabled}`, { method: 'POST' })
     }
@@ -120,10 +189,18 @@ export const useStreamStore = create<StreamStore>((set) => ({
 
   togglePanelMouseLock: (streamId) =>
     set((s) => ({
-      panels: s.panels.map((p) =>
-        p.streamId === streamId ? { ...p, mouseLocked: !p.mouseLocked } : p
-      ),
+      tabs: s.tabs.map((t) => ({
+        ...t,
+        panels: t.panels.map((p) =>
+          p.streamId === streamId ? { ...p, mouseLocked: !p.mouseLocked } : p
+        ),
+      })),
     })),
+
+  setSettings: (settings) => set({ settings }),
+  setSystemInfo: (info) => set({ systemInfo: info }),
+  toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
+  toggleProcessList: () => set((s) => ({ processListOpen: !s.processListOpen })),
 
   updateSettings: async (partial) => {
     try {
@@ -132,8 +209,7 @@ export const useStreamStore = create<StreamStore>((set) => ({
         body: JSON.stringify(partial),
       })
       if (!res.ok) return
-      const data = await res.json()
-      set({ settings: data.applied })
+      set({ settings: (await res.json()).applied })
     } catch { /* ignore */ }
   },
 

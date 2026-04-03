@@ -6,36 +6,43 @@ import { useStreamStore } from '../stores/streamStore'
 interface StreamPanelProps {
   streamId: number
   title: string
-  active?: boolean
+  active?: boolean      // true = 스트리밍 ON, false = 중단
+  lowQuality?: boolean  // true = 저사양 (연결 유지, FPS↓)
   onClose?: () => void
 }
 
-export default function StreamPanel({ streamId, title, active = true, onClose }: StreamPanelProps) {
+export default function StreamPanel({ streamId, title, active = true, lowQuality = false, onClose }: StreamPanelProps) {
   const { videoRef, connect, disconnect } = useWebRTC(streamId)
   const { bindPanel } = useInputCapture(streamId)
-  const panel = useStreamStore((s) => s.panels.find((p) => p.streamId === streamId))
+
+  const allPanels = useStreamStore((s) => s.tabs.flatMap((t) => t.panels))
+  const panel = allPanels.find((p) => p.streamId === streamId)
   const activePanel = useStreamStore((s) => s.activePanel)
   const setActivePanel = useStreamStore((s) => s.setActivePanel)
   const isSelected = activePanel === streamId
 
   useEffect(() => {
-    if (active) { connect() } else { disconnect() }
+    if (active || lowQuality) {
+      connect()
+    } else {
+      disconnect()
+    }
     return () => disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamId, active])
+  }, [streamId, active, lowQuality])
+
+  const handleFocus = useCallback(() => {
+    setActivePanel(streamId)
+    // 윈도우 스트림이면 서버에 포커스 요청
+    if (streamId > 0) {
+      fetch(`/api/admin/focus/${streamId}`, { method: 'POST' }).catch(() => {})
+    }
+  }, [streamId, setActivePanel])
 
   const handleFullscreen = useCallback(() => {
     videoRef.current?.requestFullscreen()
   }, [videoRef])
 
-  const handleFocus = useCallback(() => {
-    setActivePanel(streamId)
-  }, [streamId, setActivePanel])
-
-  const status = panel?.connection.status ?? 'disconnected'
-  const stats = panel?.stats
-
-  // Combine ref: bindPanel for input + data attributes
   const setRef = useCallback((el: HTMLDivElement | null) => {
     if (el) {
       el.dataset.mouseLock = panel?.mouseLocked ? 'true' : 'false'
@@ -43,6 +50,9 @@ export default function StreamPanel({ streamId, title, active = true, onClose }:
     }
     bindPanel(el)
   }, [bindPanel, panel?.mouseLocked, streamId])
+
+  const status = panel?.connection.status ?? 'disconnected'
+  const stats = panel?.stats
 
   return (
     <div
@@ -61,25 +71,20 @@ export default function StreamPanel({ streamId, title, active = true, onClose }:
             status === 'connected' ? 'bg-green-400' : status === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
           }`} />
           <span className="truncate text-gray-300" title={title}>{title}</span>
+          {lowQuality && <span className="text-[9px] text-yellow-500">(low)</span>}
         </div>
         <div className="flex items-center gap-0.5 ml-1 flex-shrink-0">
           {status === 'connected' && stats && (
             <span className="text-gray-500 text-[10px]">{stats.fps}fps</span>
           )}
-          {panel && !panel.inputEnabled && (
-            <span className="text-red-400 text-[10px]" title="Input disabled">🚫</span>
-          )}
-          {panel?.mouseLocked && (
-            <span className="text-yellow-400 text-[10px]" title="Mouse locked">🔒</span>
-          )}
+          {panel && !panel.inputEnabled && <span className="text-red-400 text-[10px]">🚫</span>}
+          {panel?.mouseLocked && <span className="text-yellow-400 text-[10px]">🔒</span>}
           <button onClick={handleFullscreen} className="text-gray-500 hover:text-white px-0.5 text-[11px]">⛶</button>
-          {onClose && (
-            <button onClick={onClose} className="text-gray-500 hover:text-red-400 px-0.5 text-[11px]">✕</button>
-          )}
+          {onClose && <button onClick={onClose} className="text-gray-500 hover:text-red-400 px-0.5 text-[11px]">✕</button>}
         </div>
       </div>
 
-      {/* Video + Input */}
+      {/* Video */}
       <div
         ref={setRef}
         className="flex-1 relative bg-black min-h-0 outline-none"
@@ -101,7 +106,7 @@ export default function StreamPanel({ streamId, title, active = true, onClose }:
             <button onClick={connect} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs">Retry</button>
           </div>
         )}
-        {!active && (
+        {!active && !lowQuality && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
             <p className="text-gray-500 text-xs">Paused</p>
           </div>

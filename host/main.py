@@ -565,6 +565,18 @@ async def ws_input(ws: WebSocket) -> None:
         logger.exception("Input WebSocket error")
 
 
+@app.post("/api/admin/focus/{stream_id}")
+async def focus_window(stream_id: int) -> dict[str, str]:
+    """해당 스트림의 윈도우를 포그라운드로 활성화."""
+    if stream_id == 0:
+        return {"status": "desktop"}
+    ws = window_streams.get(stream_id)
+    if ws and input_handler:
+        input_handler._activate_window(ws["hwnd"])
+        return {"status": "focused"}
+    return {"status": "not_found"}
+
+
 @app.get("/api/arduino/status")
 async def get_arduino_status() -> dict[str, Any]:
     """Arduino 연결 상태."""

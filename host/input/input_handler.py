@@ -183,29 +183,29 @@ class InputHandler:
 
     def _activate_window(self, hwnd: int) -> None:
         try:
+            # 최소화 상태면 복원
             if user32.IsIconic(hwnd):
                 user32.ShowWindow(hwnd, 9)  # SW_RESTORE
 
-            # AttachThreadInput trick to bypass foreground restrictions
-            fore_thread = user32.GetWindowThreadProcessId(
-                user32.GetForegroundWindow(), None
-            )
-            target_thread = user32.GetWindowThreadProcessId(hwnd, None)
-            current_thread = ctypes.windll.kernel32.GetCurrentThreadId()
+            # 방법 1: 현재 프로세스에 포그라운드 권한 부여
+            pid = ctypes.wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            ctypes.windll.user32.AllowSetForegroundWindow(pid.value)
 
-            if fore_thread != current_thread:
-                user32.AttachThreadInput(current_thread, fore_thread, True)
-            if target_thread != current_thread:
-                user32.AttachThreadInput(current_thread, target_thread, True)
+            # 방법 2: SPI_SETFOREGROUNDLOCKTIMEOUT을 0으로 (제한 해제)
+            user32.SystemParametersInfoW(0x2001, 0, 0, 0x0002 | 0x0001)
 
+            # 방법 3: Alt 트릭 + SetForegroundWindow + BringWindowToTop
+            user32.keybd_event(0x12, 0, 0, 0)  # Alt down
             user32.SetForegroundWindow(hwnd)
             user32.BringWindowToTop(hwnd)
+            user32.SetActiveWindow(hwnd)
+            user32.keybd_event(0x12, 0, 2, 0)  # Alt up
 
-            if fore_thread != current_thread:
-                user32.AttachThreadInput(current_thread, fore_thread, False)
-            if target_thread != current_thread:
-                user32.AttachThreadInput(current_thread, target_thread, False)
+            # 방법 4: ShowWindow로 강제 표시
+            user32.ShowWindow(hwnd, 5)  # SW_SHOW
+            user32.SetForegroundWindow(hwnd)
 
             self._active_hwnd = hwnd
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("activate_window failed: %s", e)
