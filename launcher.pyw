@@ -123,12 +123,19 @@ class IdealityLauncher:
                         self.root.after(0, self.log, line[:80])
 
                 self.running = False
+                self.process = None
 
                 # Auto-restart if server died (API restart request)
                 if self.auto_restart:
-                    self.root.after(0, self.log, "Server stopped. Auto-restarting...")
-                    import time; time.sleep(1)
-                    self.root.after(0, self.start_server)
+                    self.root.after(0, self.log, "Server stopped. Restarting in 2s...")
+                    import time; time.sleep(2)
+                    # Kill old tunnel before restart
+                    if self.tunnel_process:
+                        self.tunnel_process.terminate()
+                        try: self.tunnel_process.wait(timeout=2)
+                        except: self.tunnel_process.kill()
+                        self.tunnel_process = None
+                    self.root.after(0, self._do_restart)
                 else:
                     self.root.after(0, self._update_ui_stopped)
 
@@ -137,6 +144,13 @@ class IdealityLauncher:
                 self.root.after(0, self._update_ui_stopped)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _do_restart(self):
+        """Auto-restart: reset state and start server."""
+        self.running = False
+        self.process = None
+        self._update_ui_stopped()
+        self.start_server()
 
     def stop_server(self):
         self.auto_restart = False  # 수동 종료 시 재시작 안 함

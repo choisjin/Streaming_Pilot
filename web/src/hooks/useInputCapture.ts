@@ -109,9 +109,10 @@ export function useInputCapture(streamId: number) {
     let touchStartTime = 0
     let touchMoved = false
     let twoFingerY = 0
-    // Mouse button swap: check data attribute
-    const getMouseBtn = () => el.dataset.mouseSwap === 'true' ? 'right' : 'left'
-    const getAltBtn = () => el.dataset.mouseSwap === 'true' ? 'left' : 'right'
+    // Mouse mode: L=left, R=right, E=move+key
+    const getMode = () => (el.dataset.mouseMode || 'L') as 'L' | 'R' | 'E'
+    const getMouseBtn = () => getMode() === 'R' ? 'right' : 'left'
+    const getAltBtn = () => getMode() === 'R' ? 'left' : 'right'
 
     const getTouchPos = (t: Touch) => {
       const r = el.getBoundingClientRect()
@@ -172,12 +173,22 @@ export function useInputCapture(streamId: number) {
         clearTimeout(touchTimer)
         touchTimer = null
       }
-      // Tap (short, no move) = primary click
+      // Tap (short, no move)
       if (!touchMoved && Date.now() - touchStartTime < 300) {
-        send({ type: 'mouse_click', button: getMouseBtn(), action: 'down', ...lastTouchPos })
-        setTimeout(() => {
-          send({ type: 'mouse_click', button: getMouseBtn(), action: 'up', ...lastTouchPos })
-        }, 50)
+        const mode = getMode()
+        if (mode === 'E') {
+          // E mode: move mouse to tap position, then press E
+          send({ type: 'mouse_move', ...lastTouchPos })
+          setTimeout(() => {
+            send({ type: 'key', code: 'KeyE', action: 'down' })
+            setTimeout(() => send({ type: 'key', code: 'KeyE', action: 'up' }), 50)
+          }, 30)
+        } else {
+          send({ type: 'mouse_click', button: getMouseBtn(), action: 'down', ...lastTouchPos })
+          setTimeout(() => {
+            send({ type: 'mouse_click', button: getMouseBtn(), action: 'up', ...lastTouchPos })
+          }, 50)
+        }
       }
     }
 
