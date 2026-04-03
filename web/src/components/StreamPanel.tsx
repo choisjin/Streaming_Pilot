@@ -32,6 +32,8 @@ export default function StreamPanel({ streamId, title, active = true, lowQuality
   }, [streamId, active, lowQuality])
 
   const handleFocus = useCallback(() => {
+    // 이미 선택된 패널이면 스킵
+    if (useStreamStore.getState().activePanel === streamId) return
     setActivePanel(streamId)
     // 윈도우 스트림이면 서버에 포커스 요청
     if (streamId > 0) {
