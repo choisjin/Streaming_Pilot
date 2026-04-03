@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(bkit:pdca)",
+      "Bash(venv/Scripts/pip install:*)",
+      "Bash(venv/Scripts/python -c \"import cv2; print\\('cv2 version:', cv2.__version__\\)\")",
+      "Bash(venv/Scripts/python -c \"import dxcam; cam = dxcam.create\\(\\); frame = cam.grab\\(\\); print\\('dxcam OK, frame shape:', frame.shape if frame is not None else 'None'\\); del cam\")",
+      "Bash(timeout 10 venv/Scripts/python -c ':*)",
+      "Bash(venv/Scripts/python -c ':*)",
+      "Bash(../venv/Scripts/python -c ':*)",
+      "Bash(timeout 15 ../venv/Scripts/python -c ':*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(where cloudflared:*)",
+      "Bash(winget install:*)",
+      "Bash(tasklist)",
+      "Bash(findstr /i python)",
+      "Bash(taskkill /f /im python.exe)",
+      "Bash(taskkill /f /im pythonw.exe)",
+      "Bash(cmd.exe /c \"taskkill /f /im python.exe\")",
+      "Bash(cmd.exe /c \"taskkill /f /im pythonw.exe\")"
+    ]
+  }
+}
