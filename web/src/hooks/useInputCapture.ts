@@ -334,16 +334,23 @@ export function useInputCapture(streamId: number) {
       setTimeout(() => send({ type: 'key', code: action.code, action: 'up' }), 50)
     } else if (action.type === 'combo') {
       const codes = action.codes ?? []
-      // Press all keys
-      codes.forEach((code, i) => {
-        setTimeout(() => send({ type: 'key', code, action: 'down' }), i * 30)
+      // Check for _delay entries (e.g. ESCx2: ['Escape', '_delay50', 'Escape'])
+      let elapsed = 0
+      const keyActions: { time: number; code: string; act: 'down' | 'up' }[] = []
+
+      for (const code of codes) {
+        if (code.startsWith('_delay')) {
+          elapsed += parseInt(code.replace('_delay', '')) || 100
+        } else {
+          keyActions.push({ time: elapsed, code, act: 'down' })
+          keyActions.push({ time: elapsed + 40, code, act: 'up' })
+          elapsed += 60
+        }
+      }
+
+      keyActions.forEach(({ time, code, act }) => {
+        setTimeout(() => send({ type: 'key', code, action: act }), time)
       })
-      // Release all keys (reverse order)
-      setTimeout(() => {
-        codes.reverse().forEach((code, i) => {
-          setTimeout(() => send({ type: 'key', code, action: 'up' }), i * 30)
-        })
-      }, codes.length * 30 + 50)
     } else if (action.type === 'text') {
       const chars = action.text ?? ''
       for (let i = 0; i < chars.length; i++) {

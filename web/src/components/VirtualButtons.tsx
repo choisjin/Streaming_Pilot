@@ -21,14 +21,24 @@ interface VirtualButtonsProps {
   onToggle: () => void
 }
 
+// Fixed buttons (cannot be deleted)
+const FIXED_BUTTON_IDS = new Set([
+  'esc', 'esc2', 'enter', 'tab', 'space', 'alt-1', 'alt-2',
+])
+
 // Default buttons
 const DEFAULT_BUTTONS: VirtualButton[] = [
+  // Fixed buttons (삭제 불가)
+  { id: 'esc', label: 'ESC', action: { type: 'key', code: 'Escape' }, color: 'bg-orange-600/30' },
+  { id: 'esc2', label: 'ESCx2', action: { type: 'combo', codes: ['Escape', '_delay50', 'Escape'] }, color: 'bg-orange-600/30' },
+  { id: 'enter', label: 'Enter', action: { type: 'key', code: 'Enter' }, color: 'bg-orange-600/30' },
+  { id: 'tab', label: 'Tab', action: { type: 'key', code: 'Tab' }, color: 'bg-orange-600/30' },
+  { id: 'space', label: 'Space', action: { type: 'key', code: 'Space' }, color: 'bg-orange-600/30' },
+  { id: 'alt-1', label: 'Alt+1', action: { type: 'combo', codes: ['AltLeft', 'Digit1'] }, color: 'bg-purple-600/30' },
+  { id: 'alt-2', label: 'Alt+2', action: { type: 'combo', codes: ['AltLeft', 'Digit2'] }, color: 'bg-purple-600/30' },
+  // Removable buttons
   { id: 'rclick', label: 'R-Click', icon: '🖱️', action: { type: 'click', button: 'right' }, color: 'bg-red-600/30' },
   { id: 'mclick', label: 'M-Click', icon: '🖱️', action: { type: 'click', button: 'middle' }, color: 'bg-yellow-600/30' },
-  { id: 'esc', label: 'ESC', action: { type: 'key', code: 'Escape' } },
-  { id: 'enter', label: 'Enter', action: { type: 'key', code: 'Enter' } },
-  { id: 'tab', label: 'Tab', action: { type: 'key', code: 'Tab' } },
-  { id: 'space', label: 'Space', action: { type: 'key', code: 'Space' } },
   { id: 'ctrl-c', label: 'Ctrl+C', action: { type: 'combo', codes: ['ControlLeft', 'KeyC'] }, color: 'bg-blue-600/30' },
   { id: 'ctrl-v', label: 'Ctrl+V', action: { type: 'combo', codes: ['ControlLeft', 'KeyV'] }, color: 'bg-blue-600/30' },
   { id: 'ctrl-z', label: 'Ctrl+Z', action: { type: 'combo', codes: ['ControlLeft', 'KeyZ'] }, color: 'bg-blue-600/30' },
@@ -130,7 +140,7 @@ export default function VirtualButtons({ onAction, visible, onToggle }: VirtualB
             >
               {btn.icon ? `${btn.icon} ${btn.label}` : btn.label}
             </button>
-            {editing && (
+            {editing && !FIXED_BUTTON_IDS.has(btn.id) && (
               <button
                 onClick={() => handleRemove(btn.id)}
                 className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-[8px] text-white flex items-center justify-center"
