@@ -1,4 +1,5 @@
 import { useCallback, useEffect } from 'react'
+import MouseSwapButton from './MouseSwapButton'
 import { useWebRTC } from '../hooks/useWebRTC'
 import { useInputCapture } from '../hooks/useInputCapture'
 import { useStreamStore } from '../stores/streamStore'
@@ -113,6 +114,7 @@ export default function StreamPanel({ streamId, title, active = true, lowQuality
             <p className="text-gray-500 text-xs">Paused</p>
           </div>
         )}
+        {isSelected && active && <MouseSwapButton streamId={streamId} />}
       </div>
     </div>
   )

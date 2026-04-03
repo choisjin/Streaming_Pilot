@@ -105,9 +105,13 @@ export function useInputCapture(streamId: number) {
 
     // --- Touch support ---
     let touchTimer: ReturnType<typeof setTimeout> | null = null
-    let lastTouchPos = { x: 0, y: 0 }
+    let lastTouchPos = { x: 0, y: 0, panelW: 1, panelH: 1 }
     let touchStartTime = 0
+    let touchMoved = false
     let twoFingerY = 0
+    // Mouse button swap: check data attribute
+    const getMouseBtn = () => el.dataset.mouseSwap === 'true' ? 'right' : 'left'
+    const getAltBtn = () => el.dataset.mouseSwap === 'true' ? 'left' : 'right'
 
     const getTouchPos = (t: Touch) => {
       const r = el.getBoundingClientRect()
@@ -130,15 +134,15 @@ export function useInputCapture(streamId: number) {
         const pos = getTouchPos(e.touches[0])
         lastTouchPos = pos
         touchStartTime = Date.now()
-        // Move mouse to touch position
+        touchMoved = false
+        // Move mouse to position immediately
         send({ type: 'mouse_move', ...pos })
-        // Long press → right click (500ms)
+        // Long press → alt button click (500ms)
         touchTimer = setTimeout(() => {
-          send({ type: 'mouse_click', button: 'right', action: 'click', ...pos })
+          send({ type: 'mouse_click', button: getAltBtn(), action: 'click', ...pos })
           touchTimer = null
         }, 500)
       } else if (e.touches.length === 2) {
-        // Two-finger: scroll
         if (touchTimer) { clearTimeout(touchTimer); touchTimer = null }
         twoFingerY = (e.touches[0].clientY + e.touches[1].clientY) / 2
       }
@@ -147,7 +151,7 @@ export function useInputCapture(streamId: number) {
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault()
       if (e.touches.length === 1) {
-        // Cancel long press on move
+        touchMoved = true
         if (touchTimer) { clearTimeout(touchTimer); touchTimer = null }
         const pos = getTouchPos(e.touches[0])
         lastTouchPos = pos
@@ -167,10 +171,13 @@ export function useInputCapture(streamId: number) {
       if (touchTimer) {
         clearTimeout(touchTimer)
         touchTimer = null
-        // Short tap = left click
-        if (Date.now() - touchStartTime < 300) {
-          send({ type: 'mouse_click', button: 'left', action: 'click', ...lastTouchPos })
-        }
+      }
+      // Tap (short, no move) = primary click
+      if (!touchMoved && Date.now() - touchStartTime < 300) {
+        send({ type: 'mouse_click', button: getMouseBtn(), action: 'down', ...lastTouchPos })
+        setTimeout(() => {
+          send({ type: 'mouse_click', button: getMouseBtn(), action: 'up', ...lastTouchPos })
+        }, 50)
       }
     }
 
