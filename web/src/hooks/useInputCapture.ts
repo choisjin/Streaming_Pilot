@@ -103,6 +103,77 @@ export function useInputCapture(streamId: number) {
 
     const onCtx = (e: Event) => e.preventDefault()
 
+    // --- Touch support ---
+    let touchTimer: ReturnType<typeof setTimeout> | null = null
+    let lastTouchPos = { x: 0, y: 0 }
+    let touchStartTime = 0
+    let twoFingerY = 0
+
+    const getTouchPos = (t: Touch) => {
+      const r = el.getBoundingClientRect()
+      const video = el.querySelector('video')
+      if (!video || !video.videoWidth) return { x: t.clientX - r.left, y: t.clientY - r.top, panelW: r.width, panelH: r.height }
+      const va = video.videoWidth / video.videoHeight
+      const ca = r.width / r.height
+      let vx: number, vy: number, vw: number, vh: number
+      if (va > ca) { vw = r.width; vh = r.width / va; vx = r.left; vy = r.top + (r.height - vh) / 2 }
+      else { vh = r.height; vw = r.height * va; vx = r.left + (r.width - vw) / 2; vy = r.top }
+      return { x: t.clientX - vx, y: t.clientY - vy, panelW: vw, panelH: vh }
+    }
+
+    const onTouchStart = (e: TouchEvent) => {
+      e.preventDefault()
+      el.focus()
+      if (el.style.cursor === 'not-allowed') return
+
+      if (e.touches.length === 1) {
+        const pos = getTouchPos(e.touches[0])
+        lastTouchPos = pos
+        touchStartTime = Date.now()
+        // Move mouse to touch position
+        send({ type: 'mouse_move', ...pos })
+        // Long press → right click (500ms)
+        touchTimer = setTimeout(() => {
+          send({ type: 'mouse_click', button: 'right', action: 'click', ...pos })
+          touchTimer = null
+        }, 500)
+      } else if (e.touches.length === 2) {
+        // Two-finger: scroll
+        if (touchTimer) { clearTimeout(touchTimer); touchTimer = null }
+        twoFingerY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+      }
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault()
+      if (e.touches.length === 1) {
+        // Cancel long press on move
+        if (touchTimer) { clearTimeout(touchTimer); touchTimer = null }
+        const pos = getTouchPos(e.touches[0])
+        lastTouchPos = pos
+        send({ type: 'mouse_move', ...pos })
+      } else if (e.touches.length === 2) {
+        const newY = (e.touches[0].clientY + e.touches[1].clientY) / 2
+        const delta = (twoFingerY - newY) * 3
+        if (Math.abs(delta) > 5) {
+          send({ type: 'mouse_wheel', delta })
+          twoFingerY = newY
+        }
+      }
+    }
+
+    const onTouchEnd = (e: TouchEvent) => {
+      e.preventDefault()
+      if (touchTimer) {
+        clearTimeout(touchTimer)
+        touchTimer = null
+        // Short tap = left click
+        if (Date.now() - touchStartTime < 300) {
+          send({ type: 'mouse_click', button: 'left', action: 'click', ...lastTouchPos })
+        }
+      }
+    }
+
     // e.code가 빈 경우 e.key + e.location으로 추정
     const resolveCode = (e: KeyboardEvent): string => {
       if (e.code) return e.code
@@ -207,6 +278,9 @@ export function useInputCapture(streamId: number) {
     el.addEventListener('contextmenu', onCtx)
     el.addEventListener('keydown', onKeyDown)
     el.addEventListener('keyup', onKeyUp)
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: false })
 
     cleanupRef.current = () => {
       el.removeEventListener('mousemove', onMouseMove)
@@ -216,6 +290,9 @@ export function useInputCapture(streamId: number) {
       el.removeEventListener('contextmenu', onCtx)
       el.removeEventListener('keydown', onKeyDown)
       el.removeEventListener('keyup', onKeyUp)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
     }
   }, [send])
 
@@ -224,5 +301,48 @@ export function useInputCapture(streamId: number) {
     return () => { if (cleanupRef.current) cleanupRef.current() }
   }, [])
 
-  return { bindPanel }
+  // Virtual button action handler
+  const sendAction = useCallback((action: {
+    type: 'click' | 'key' | 'combo' | 'text'
+    button?: string
+    code?: string
+    codes?: string[]
+    text?: string
+  }) => {
+    if (action.type === 'click') {
+      send({ type: 'mouse_click', button: action.button, action: 'click', x: 0, y: 0, panelW: 1, panelH: 1 })
+    } else if (action.type === 'key') {
+      send({ type: 'key', code: action.code, action: 'down' })
+      setTimeout(() => send({ type: 'key', code: action.code, action: 'up' }), 50)
+    } else if (action.type === 'combo') {
+      const codes = action.codes ?? []
+      // Press all keys
+      codes.forEach((code, i) => {
+        setTimeout(() => send({ type: 'key', code, action: 'down' }), i * 30)
+      })
+      // Release all keys (reverse order)
+      setTimeout(() => {
+        codes.reverse().forEach((code, i) => {
+          setTimeout(() => send({ type: 'key', code, action: 'up' }), i * 30)
+        })
+      }, codes.length * 30 + 50)
+    } else if (action.type === 'text') {
+      const chars = action.text ?? ''
+      for (let i = 0; i < chars.length; i++) {
+        const c = chars[i]
+        const code = c >= 'a' && c <= 'z' ? `Key${c.toUpperCase()}` :
+                     c >= 'A' && c <= 'Z' ? `Key${c}` :
+                     c >= '0' && c <= '9' ? `Digit${c}` :
+                     c === ' ' ? 'Space' : ''
+        if (code) {
+          setTimeout(() => {
+            send({ type: 'key', code, action: 'down' })
+            setTimeout(() => send({ type: 'key', code, action: 'up' }), 30)
+          }, i * 60)
+        }
+      }
+    }
+  }, [send])
+
+  return { bindPanel, sendAction }
 }

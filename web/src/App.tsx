@@ -5,6 +5,8 @@ import ResizableGrid from './components/ResizableGrid'
 import SettingsPanel from './components/SettingsPanel'
 import StreamPanel from './components/StreamPanel'
 import Toolbar from './components/Toolbar'
+import VirtualButtons from './components/VirtualButtons'
+import { useInputCapture } from './hooks/useInputCapture'
 import { useStreamStore } from './stores/streamStore'
 
 export default function App() {
@@ -29,12 +31,15 @@ export default function App() {
 function MainApp() {
   const tabs = useStreamStore((s) => s.tabs)
   const activeTabId = useStreamStore((s) => s.activeTabId)
+  const activePanel = useStreamStore((s) => s.activePanel)
   const setActiveTab = useStreamStore((s) => s.setActiveTab)
   const addWindowTab = useStreamStore((s) => s.addWindowTab)
   const removeWindowTab = useStreamStore((s) => s.removeWindowTab)
   const removePanelFromTab = useStreamStore((s) => s.removePanelFromTab)
   const deleteStream = useStreamStore((s) => s.deleteStream)
   const fetchSystemInfo = useStreamStore((s) => s.fetchSystemInfo)
+  const { sendAction } = useInputCapture(activePanel)
+  const [vButtonsVisible, setVButtonsVisible] = useState(false)
 
   useEffect(() => {
     fetchSystemInfo()
@@ -128,6 +133,13 @@ function MainApp() {
         <SettingsPanel />
         <ProcessList />
       </div>
+
+      {/* Virtual Buttons (mobile + desktop) */}
+      <VirtualButtons
+        onAction={sendAction}
+        visible={vButtonsVisible}
+        onToggle={() => setVButtonsVisible(!vButtonsVisible)}
+      />
     </div>
   )
 }
