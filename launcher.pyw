@@ -127,14 +127,26 @@ class IdealityLauncher:
 
                 # Auto-restart if server died (API restart request)
                 if self.auto_restart:
-                    self.root.after(0, self.log, "Server stopped. Restarting in 2s...")
-                    import time; time.sleep(2)
-                    # Kill old tunnel before restart
+                    self.root.after(0, self.log, "Server stopped. Restarting in 5s...")
+                    import time
+
+                    # Kill any remaining python/dxcam child processes
+                    if self.process:
+                        try: self.process.kill()
+                        except: pass
+                        try: self.process.wait(timeout=3)
+                        except: pass
+                        self.process = None
+
+                    # Kill old tunnel
                     if self.tunnel_process:
                         self.tunnel_process.terminate()
-                        try: self.tunnel_process.wait(timeout=2)
+                        try: self.tunnel_process.wait(timeout=3)
                         except: self.tunnel_process.kill()
                         self.tunnel_process = None
+
+                    # Wait for port to be released
+                    time.sleep(5)
                     self.root.after(0, self._do_restart)
                 else:
                     self.root.after(0, self._update_ui_stopped)

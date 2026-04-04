@@ -579,12 +579,27 @@ async def focus_window(stream_id: int) -> dict[str, str]:
 
 @app.post("/api/admin/restart")
 async def restart_server() -> dict[str, str]:
-    """서버 재시작."""
+    """서버 재시작 — 모든 리소스 정리 후 종료."""
     import os, signal
-    logger.info("Server restart requested")
+    logger.info("Server restart requested — cleaning up...")
 
     async def _restart():
-        await asyncio.sleep(0.5)
+        # 모든 윈도우 스트림 정리
+        for sid in list(window_streams.keys()):
+            try:
+                ws = window_streams.pop(sid)
+                await ws["webrtc"].close()
+                await ws["capture"].stop()
+            except: pass
+
+        # WebRTC 정리
+        if webrtc_manager:
+            await webrtc_manager.close()
+
+        # Arduino 해제
+        arduino.disconnect()
+
+        await asyncio.sleep(1)
         os.kill(os.getpid(), signal.SIGTERM)
 
     asyncio.create_task(_restart())

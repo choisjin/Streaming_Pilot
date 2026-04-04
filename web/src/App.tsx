@@ -35,12 +35,20 @@ function MainApp() {
   const setActiveTab = useStreamStore((s) => s.setActiveTab)
   const addWindowTab = useStreamStore((s) => s.addWindowTab)
   const removeWindowTab = useStreamStore((s) => s.removeWindowTab)
+  const addPanelToTab = useStreamStore((s) => s.addPanelToTab)
   const removePanelFromTab = useStreamStore((s) => s.removePanelFromTab)
   const deleteStream = useStreamStore((s) => s.deleteStream)
   const fetchSystemInfo = useStreamStore((s) => s.fetchSystemInfo)
   const { sendAction } = useInputCapture(activePanel)
   const [vButtonsVisible, setVButtonsVisible] = useState(false)
   const [mouseMode, setMouseMode] = useState<'L' | 'R' | 'E'>('L')
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   // Sync mouse mode to all panels
   useEffect(() => {
@@ -54,11 +62,31 @@ function MainApp() {
     setMouseMode((m) => m === 'L' ? 'R' : m === 'R' ? 'E' : 'L')
   }, [])
 
+  // Restore streams from server on mount
   useEffect(() => {
+    const restoreStreams = async () => {
+      try {
+        const res = await fetch('/api/streams')
+        if (!res.ok) return
+        const streams = await res.json()
+        // Add window streams that aren't already in tabs
+        const existingIds = new Set(tabs.flatMap((t) => t.panels.map((p) => p.streamId)))
+        const windowStreams = streams.filter((s: any) => s.type === 'window' && !existingIds.has(s.streamId))
+        if (windowStreams.length > 0) {
+          let tabId = tabs.find((t) => t.type === 'windows')?.id
+          if (!tabId) tabId = addWindowTab()
+          windowStreams.forEach((s: any) => {
+            addPanelToTab(tabId!, s.streamId, s.title || `Window ${s.streamId}`)
+          })
+        }
+      } catch { /* ignore */ }
+    }
+    restoreStreams()
     fetchSystemInfo()
     const id = setInterval(fetchSystemInfo, 5000)
     return () => clearInterval(id)
-  }, [fetchSystemInfo])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleClosePanel = useCallback(async (tabId: string, streamId: number) => {
     await deleteStream(streamId)
@@ -73,13 +101,8 @@ function MainApp() {
     removeWindowTab(tabId)
   }, [tabs, deleteStream, removeWindowTab])
 
-  return (
-    <div className="h-screen flex flex-col bg-gray-950">
-      {/* Toolbar */}
-      <Toolbar />
-
-      {/* Tab bar */}
-      <div className="flex bg-gray-800 border-b border-gray-700 flex-shrink-0">
+  const tabBar = (
+    <div className={`flex bg-gray-800 ${isMobile ? 'border-t' : 'border-b'} border-gray-700 flex-shrink-0 overflow-x-auto`}>
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -105,14 +128,16 @@ function MainApp() {
           </button>
         ))}
         {/* Add window tab button */}
-        <button
-          onClick={addWindowTab}
-          className="px-3 py-1.5 text-xs text-gray-500 hover:text-white hover:bg-gray-700 transition-colors"
-          title="Add window tab"
-        >
-          +
-        </button>
+        <button onClick={addWindowTab}
+          className="px-3 py-1.5 text-xs text-gray-500 hover:text-white hover:bg-gray-700 transition-colors">+</button>
       </div>
+    )
+
+  return (
+    <div className="h-screen flex flex-col bg-gray-950">
+      {/* Desktop: toolbar + tabs on top */}
+      {!isMobile && <Toolbar />}
+      {!isMobile && tabBar}
 
       {/* Tab content */}
       <div className="flex-1 min-h-0 relative overflow-hidden">
@@ -146,6 +171,10 @@ function MainApp() {
         <SettingsPanel />
         <ProcessList />
       </div>
+
+      {/* Mobile: tabs + toolbar at bottom */}
+      {isMobile && tabBar}
+      {isMobile && <Toolbar />}
 
       {/* Virtual Buttons (mobile + desktop) */}
       <VirtualButtons
