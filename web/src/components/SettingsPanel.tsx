@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import AdminPanel from './AdminPanel'
 import { useStreamStore } from '../stores/streamStore'
 
@@ -14,6 +15,14 @@ export default function SettingsPanel() {
   const setTabLayout = useStreamStore((s) => s.setTabLayout)
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
+
+  const [turnUsage, setTurnUsage] = useState<any>(null)
+
+  useEffect(() => {
+    if (settingsOpen) {
+      fetch('/api/turn/usage').then(r => r.json()).then(setTurnUsage).catch(() => {})
+    }
+  }, [settingsOpen])
 
   if (!settingsOpen) return null
 
@@ -82,6 +91,44 @@ export default function SettingsPanel() {
           </>
         )}
       </div>
+
+      {/* TURN Usage */}
+      {turnUsage && (
+        <div className="border-t border-gray-700 pt-3 mt-3">
+          <h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wide">TURN Usage</h3>
+          <div className="space-y-1.5">
+            <div className="flex justify-between text-xs">
+              <span className="text-gray-500">Total</span>
+              <span className="text-gray-300">{turnUsage.totalGB} GB / {turnUsage.freeLimit_GB} GB</span>
+            </div>
+            <div className="w-full bg-gray-700 rounded-full h-1.5">
+              <div
+                className={`h-1.5 rounded-full ${turnUsage.usedPercent > 80 ? 'bg-red-500' : turnUsage.usedPercent > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                style={{ width: `${Math.min(100, turnUsage.usedPercent)}%` }}
+              />
+            </div>
+            <div className="flex justify-between text-[10px]">
+              <span className="text-gray-500">{turnUsage.sessions} sessions</span>
+              <span className={turnUsage.costUSD > 0 ? 'text-red-400' : 'text-green-400'}>
+                {turnUsage.costUSD > 0 ? `$${turnUsage.costUSD}` : 'Free'}
+              </span>
+            </div>
+            {Object.keys(turnUsage.daily || {}).length > 0 && (
+              <div className="mt-1">
+                <span className="text-[10px] text-gray-500">Daily (MB):</span>
+                <div className="flex gap-0.5 mt-0.5 overflow-x-auto">
+                  {Object.entries(turnUsage.daily).slice(-7).map(([date, mb]: [string, any]) => (
+                    <div key={date} className="text-center min-w-[32px]">
+                      <div className="text-[9px] text-gray-400">{mb}</div>
+                      <div className="text-[8px] text-gray-600">{date.slice(5)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <AdminPanel />
     </div>

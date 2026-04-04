@@ -115,7 +115,7 @@ export function useWebRTC(streamId: number) {
 
   const startStatsPolling = useCallback((pc: RTCPeerConnection) => {
     if (statsInterval.current) clearInterval(statsInterval.current)
-    let prevBytes = 0, prevTs = 0
+    let prevBytes = 0, prevTs = 0, totalReported = 0
 
     statsInterval.current = setInterval(async () => {
       if (pc.connectionState !== 'connected') return
@@ -123,16 +123,26 @@ export function useWebRTC(streamId: number) {
         const stats = await pc.getStats()
         stats.forEach((report) => {
           if (report.type === 'inbound-rtp' && report.kind === 'video') {
+            const cur = report.bytesReceived ?? 0
             if (prevTs > 0) {
               const dt = (report.timestamp - prevTs) / 1000
-              const bitrate = ((report.bytesReceived - prevBytes) * 8) / dt
+              const bitrate = ((cur - prevBytes) * 8) / dt
               useStreamStore.getState().updatePanelStats(streamId, {
                 fps: report.framesPerSecond ?? 0,
                 bitrate: Math.round(bitrate / 1000),
                 packetsLost: report.packetsLost ?? 0,
               })
             }
-            prevBytes = report.bytesReceived ?? 0
+            // Track TURN usage every 500KB
+            if (cur - totalReported > 500000) {
+              fetch(`${API_BASE}/api/turn/track`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bytes: cur - totalReported }),
+              }).catch(() => {})
+              totalReported = cur
+            }
+            prevBytes = cur
             prevTs = report.timestamp
           }
           if (report.type === 'candidate-pair' && report.state === 'succeeded') {

@@ -591,6 +591,65 @@ async def restart_server() -> dict[str, str]:
     return {"status": "restarting"}
 
 
+# TURN usage tracker
+import json as _json
+from pathlib import Path as _Path
+
+_USAGE_FILE = _Path(__file__).parent / "turn_usage.json"
+
+def _load_usage() -> dict:
+    try:
+        if _USAGE_FILE.exists():
+            return _json.loads(_USAGE_FILE.read_text())
+    except: pass
+    return {"total_bytes": 0, "sessions": 0, "daily": {}}
+
+def _save_usage(data: dict) -> None:
+    try: _USAGE_FILE.write_text(_json.dumps(data))
+    except: pass
+
+def _track_usage(bytes_count: int) -> None:
+    from datetime import date
+    data = _load_usage()
+    data["total_bytes"] += bytes_count
+    data["sessions"] += 1
+    today = str(date.today())
+    data["daily"][today] = data["daily"].get(today, 0) + bytes_count
+    # Keep only last 30 days
+    keys = sorted(data["daily"].keys())
+    if len(keys) > 30:
+        for k in keys[:-30]:
+            del data["daily"][k]
+    _save_usage(data)
+
+
+@app.get("/api/turn/usage")
+async def get_turn_usage() -> dict[str, Any]:
+    """TURN 사용량 조회."""
+    data = _load_usage()
+    total_gb = data["total_bytes"] / (1024 ** 3)
+    free_limit_gb = 1000
+    return {
+        "totalBytes": data["total_bytes"],
+        "totalGB": round(total_gb, 3),
+        "sessions": data["sessions"],
+        "freeLimit_GB": free_limit_gb,
+        "usedPercent": round(total_gb / free_limit_gb * 100, 2),
+        "costUSD": round(max(0, total_gb - free_limit_gb) * 0.05, 2),
+        "daily": {k: round(v / (1024**2), 1) for k, v in data.get("daily", {}).items()},  # MB per day
+    }
+
+
+@app.post("/api/turn/track")
+async def track_turn_usage(request: Request) -> dict[str, str]:
+    """클라이언트에서 보고한 TURN 트래픽 기록."""
+    data = await request.json()
+    bytes_count = data.get("bytes", 0)
+    if bytes_count > 0:
+        _track_usage(bytes_count)
+    return {"status": "ok"}
+
+
 @app.get("/api/turn/credentials")
 async def get_turn_credentials() -> dict[str, Any]:
     """Cloudflare TURN credentials 생성."""
