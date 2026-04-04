@@ -129,12 +129,14 @@ class WebRTCManager:
         self,
         frame_queue: asyncio.Queue[np.ndarray],
         stun_servers: list[str] | None = None,
+        turn_servers: list[dict] | None = None,
         fps: int = 30,
         width: int = STREAM_WIDTH,
         height: int = STREAM_HEIGHT,
     ) -> None:
         self._frame_queue = frame_queue
-        self._stun_servers = stun_servers or ["stun:stun.l.google.com:19302"]
+        self._stun_servers = stun_servers or ["stun:stun.cloudflare.com:3478"]
+        self._turn_servers = turn_servers or []
         self._fps = fps
         self._width = width
         self._height = height
@@ -151,6 +153,12 @@ class WebRTCManager:
             await self.close()
 
         ice_servers = [RTCIceServer(urls=s) for s in self._stun_servers]
+        for turn in self._turn_servers:
+            ice_servers.append(RTCIceServer(
+                urls=turn.get("urls", []),
+                username=turn.get("username", ""),
+                credential=turn.get("credential", ""),
+            ))
         config = RTCConfiguration(iceServers=ice_servers)
         self._pc = RTCPeerConnection(configuration=config)
 

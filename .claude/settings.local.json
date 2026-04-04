@@ -18,7 +18,8 @@
       "Bash(taskkill /f /im python.exe)",
       "Bash(taskkill /f /im pythonw.exe)",
       "Bash(cmd.exe /c \"taskkill /f /im python.exe\")",
-      "Bash(cmd.exe /c \"taskkill /f /im pythonw.exe\")"
+      "Bash(cmd.exe /c \"taskkill /f /im pythonw.exe\")",
+      "WebFetch(domain:developers.cloudflare.com)"
     ]
   }
 }

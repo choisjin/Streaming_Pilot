@@ -579,31 +579,45 @@ async def focus_window(stream_id: int) -> dict[str, str]:
 
 @app.post("/api/admin/restart")
 async def restart_server() -> dict[str, str]:
-    """서버 재시작 — 모든 리소스 정리 후 종료."""
-    import os, signal
-    logger.info("Server restart requested — cleaning up...")
+    """서버 재시작 — 강제 종료."""
+    import os
+    logger.info("Server restart requested — force exit")
 
-    async def _restart():
-        # 모든 윈도우 스트림 정리
-        for sid in list(window_streams.keys()):
-            try:
-                ws = window_streams.pop(sid)
-                await ws["webrtc"].close()
-                await ws["capture"].stop()
-            except: pass
+    async def _force_exit():
+        await asyncio.sleep(0.5)
+        os._exit(0)  # 강제 종료, 모든 자식 프로세스도 종료됨
 
-        # WebRTC 정리
-        if webrtc_manager:
-            await webrtc_manager.close()
-
-        # Arduino 해제
-        arduino.disconnect()
-
-        await asyncio.sleep(1)
-        os.kill(os.getpid(), signal.SIGTERM)
-
-    asyncio.create_task(_restart())
+    asyncio.create_task(_force_exit())
     return {"status": "restarting"}
+
+
+@app.get("/api/turn/credentials")
+async def get_turn_credentials() -> dict[str, Any]:
+    """Cloudflare TURN credentials 생성."""
+    import httpx
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"https://rtc.live.cloudflare.com/v1/turn/keys/{host_config.turn_key_id}/credentials/generate-ice-servers",
+                headers={
+                    "Authorization": f"Bearer {host_config.turn_api_token}",
+                    "Content-Type": "application/json",
+                },
+                json={"ttl": 86400},
+                timeout=10,
+            )
+            if resp.status_code == 201:
+                return resp.json()
+            logger.warning("TURN credentials failed: %d", resp.status_code)
+    except Exception as e:
+        logger.warning("TURN credentials error: %s", e)
+
+    # Fallback: STUN only
+    return {
+        "iceServers": [
+            {"urls": ["stun:stun.cloudflare.com:3478"]},
+        ]
+    }
 
 
 @app.get("/api/arduino/status")
@@ -628,7 +642,30 @@ if WEB_DIST.exists():
         return FileResponse(str(WEB_DIST / "index.html"))
 
 
+def _kill_port(port: int) -> None:
+    """Kill any process using the given port."""
+    import subprocess as sp
+    try:
+        result = sp.run(
+            f'netstat -ano | findstr :{port} | findstr LISTENING',
+            shell=True, capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().split('\n'):
+            parts = line.split()
+            if parts:
+                pid = parts[-1]
+                if pid.isdigit() and int(pid) != os.getpid():
+                    sp.run(f'taskkill /f /pid {pid}', shell=True, capture_output=True, timeout=5)
+                    logger.info("Killed process %s on port %d", pid, port)
+    except Exception:
+        pass
+
+
 if __name__ == "__main__":
+    import os
+    _kill_port(host_config.port)
+    import time; time.sleep(1)
+
     uvicorn.run(
         "main:app",
         host=host_config.host,

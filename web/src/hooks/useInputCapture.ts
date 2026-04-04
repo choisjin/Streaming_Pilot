@@ -50,11 +50,11 @@ export function useInputCapture(streamId: number) {
       let videoX: number, videoY: number, videoW: number, videoH: number
 
       if (videoAspect > containerAspect) {
-        // Video wider than container → letterbox top/bottom
+        // Video wider than container → letterbox at bottom (object-position: top)
         videoW = r.width
         videoH = r.width / videoAspect
         videoX = r.left
-        videoY = r.top + (r.height - videoH) / 2
+        videoY = r.top  // top-aligned, no offset
       } else {
         // Video taller → pillarbox left/right
         videoH = r.height
@@ -121,7 +121,7 @@ export function useInputCapture(streamId: number) {
       const va = video.videoWidth / video.videoHeight
       const ca = r.width / r.height
       let vx: number, vy: number, vw: number, vh: number
-      if (va > ca) { vw = r.width; vh = r.width / va; vx = r.left; vy = r.top + (r.height - vh) / 2 }
+      if (va > ca) { vw = r.width; vh = r.width / va; vx = r.left; vy = r.top }
       else { vh = r.height; vw = r.height * va; vx = r.left + (r.width - vw) / 2; vy = r.top }
       return { x: t.clientX - vx, y: t.clientY - vy, panelW: vw, panelH: vh }
     }

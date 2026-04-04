@@ -135,8 +135,9 @@ function MainApp() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-950">
-      {/* Desktop: toolbar + tabs on top */}
-      {!isMobile && <Toolbar />}
+      {/* Toolbar always on top */}
+      <Toolbar />
+      {/* Desktop: tabs on top */}
       {!isMobile && tabBar}
 
       {/* Tab content */}
@@ -172,9 +173,8 @@ function MainApp() {
         <ProcessList />
       </div>
 
-      {/* Mobile: tabs + toolbar at bottom */}
-      {isMobile && tabBar}
-      {isMobile && <Toolbar />}
+      {/* Mobile: tabs at bottom (hidden when virtual buttons open) */}
+      {isMobile && !vButtonsVisible && tabBar}
 
       {/* Virtual Buttons (mobile + desktop) */}
       <VirtualButtons

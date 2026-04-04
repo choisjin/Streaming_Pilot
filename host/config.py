@@ -51,6 +51,8 @@ class HostConfig:
     host: str = "0.0.0.0"
     port: int = int(os.environ.get("HOST_PORT", "8080"))
     stun_servers: list[str] = field(
-        default_factory=lambda: ["stun:stun.l.google.com:19302"]
+        default_factory=lambda: ["stun:stun.cloudflare.com:3478"]
     )
+    turn_key_id: str = "0bfba3e24df18e6a08c0d4fae8784b8d"
+    turn_api_token: str = "00b66d70b3166655fc7ee751bfe03dedf9a86ff20b21744893b1b06f50b332e5"
     max_streams: int = 4

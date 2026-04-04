@@ -21,7 +21,9 @@ class IdealityLauncher:
         self.process = None
         self.tunnel_process = None
         self.running = False
-        self.auto_restart = True  # API 재시작 요청 시 자동 재시작
+        self.auto_restart = True
+        self.restart_count = 0
+        self.max_restarts = 3
 
         self.root = tk.Tk()
         self.root.title("Ideality Remote Desktop")
@@ -98,6 +100,7 @@ class IdealityLauncher:
             return
 
         self.auto_restart = True
+        self.restart_count = 0
         self.log("Starting server...")
         self.start_btn.config(state="disabled")
 
@@ -114,8 +117,9 @@ class IdealityLauncher:
                 self.running = True
                 self.root.after(0, self._update_ui_running)
 
-                # Start Cloudflare Tunnel
-                self._start_tunnel()
+                # Start Cloudflare Tunnel (only if not already running)
+                if not self.tunnel_process or self.tunnel_process.poll() is not None:
+                    self._start_tunnel()
 
                 for line in self.process.stdout:
                     line = line.strip()
@@ -126,11 +130,12 @@ class IdealityLauncher:
                 self.process = None
 
                 # Auto-restart if server died (API restart request)
-                if self.auto_restart:
-                    self.root.after(0, self.log, "Server stopped. Restarting in 5s...")
+                if self.auto_restart and self.restart_count < self.max_restarts:
+                    self.restart_count += 1
+                    self.root.after(0, self.log, f"Server stopped. Restarting ({self.restart_count}/{self.max_restarts})...")
                     import time
 
-                    # Kill any remaining python/dxcam child processes
+                    # Kill any remaining child processes
                     if self.process:
                         try: self.process.kill()
                         except: pass
@@ -138,16 +143,20 @@ class IdealityLauncher:
                         except: pass
                         self.process = None
 
-                    # Kill old tunnel
-                    if self.tunnel_process:
-                        self.tunnel_process.terminate()
-                        try: self.tunnel_process.wait(timeout=3)
-                        except: self.tunnel_process.kill()
-                        self.tunnel_process = None
+                    # Keep tunnel alive — don't kill it on restart
+                    # Kill any leftover processes on port 8080
+                    try:
+                        subprocess.run(
+                            ['cmd.exe', '/c', 'for /f "tokens=5" %a in (\'netstat -ano ^| findstr :8080 ^| findstr LISTENING\') do taskkill /f /pid %a'],
+                            capture_output=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW
+                        )
+                    except: pass
 
-                    # Wait for port to be released
                     time.sleep(5)
                     self.root.after(0, self._do_restart)
+                elif self.restart_count >= self.max_restarts:
+                    self.root.after(0, self.log, "Max restarts reached. Click Start to retry.")
+                    self.root.after(0, self._update_ui_stopped)
                 else:
                     self.root.after(0, self._update_ui_stopped)
 
@@ -158,11 +167,13 @@ class IdealityLauncher:
         threading.Thread(target=run, daemon=True).start()
 
     def _do_restart(self):
-        """Auto-restart: reset state and start server."""
+        """Auto-restart: reset state and start server (preserve restart count)."""
+        count = self.restart_count  # preserve
         self.running = False
         self.process = None
         self._update_ui_stopped()
         self.start_server()
+        self.restart_count = count  # restore (start_server resets it)
 
     def stop_server(self):
         self.auto_restart = False  # 수동 종료 시 재시작 안 함

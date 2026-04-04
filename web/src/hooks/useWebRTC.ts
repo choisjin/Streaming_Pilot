@@ -27,7 +27,6 @@ export function useWebRTC(streamId: number) {
 
   const connect = useCallback(async () => {
     if (connectingRef.current) return
-    // Don't reconnect if already connected
     if (pcRef.current && pcRef.current.connectionState === 'connected') return
     connectingRef.current = true
     cleanup()
@@ -35,9 +34,19 @@ export function useWebRTC(streamId: number) {
     useStreamStore.getState().updatePanelConnection(streamId, { status: 'connecting', error: undefined })
 
     try {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-      })
+      // Fetch TURN credentials from server
+      let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.cloudflare.com:3478' }]
+      try {
+        const turnRes = await fetch(`${API_BASE}/api/turn/credentials`)
+        if (turnRes.ok) {
+          const turnData = await turnRes.json()
+          if (turnData.iceServers) {
+            iceServers = turnData.iceServers
+          }
+        }
+      } catch { /* fallback to STUN only */ }
+
+      const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
 
       pc.addTransceiver('video', { direction: 'recvonly' })

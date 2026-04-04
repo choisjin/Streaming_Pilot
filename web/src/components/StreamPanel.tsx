@@ -95,7 +95,7 @@ export default function StreamPanel({ streamId, title, active = true, lowQuality
         <video
           ref={videoRef}
           autoPlay playsInline muted
-          style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', objectPosition: 'top', pointerEvents: 'none' }}
         />
         {status === 'connecting' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/60">

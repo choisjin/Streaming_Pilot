@@ -96,10 +96,20 @@ export default function Toolbar() {
         <button onClick={toggleProcessList} className="px-2 py-1 rounded text-[11px] text-gray-400 hover:bg-gray-700 hover:text-white">+ Window</button>
         <button onClick={toggleSettings} className="px-1.5 py-1 rounded text-gray-400 hover:bg-gray-700 hover:text-white">⚙</button>
         <button
+          onClick={() => {
+            // Close all WebRTC connections by reloading
+            if (confirm('Disconnect all streams?')) {
+              window.location.reload()
+            }
+          }}
+          className="px-1.5 py-1 rounded text-gray-500 hover:bg-yellow-900/30 hover:text-yellow-400 text-[11px]"
+          title="Disconnect streams"
+        >⏹</button>
+        <button
           onClick={async () => {
             if (confirm('Restart server?')) {
               await fetch('/api/admin/restart', { method: 'POST' })
-              setTimeout(() => window.location.reload(), 3000)
+              setTimeout(() => window.location.reload(), 5000)
             }
           }}
           className="px-1.5 py-1 rounded text-gray-500 hover:bg-red-900/30 hover:text-red-400 text-[11px]"
