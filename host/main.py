@@ -715,6 +715,55 @@ async def get_arduino_status() -> dict[str, Any]:
     }
 
 
+# --- Vibeshine API Proxy ---
+# HTTP→HTTPS 프록시: 브라우저의 mixed content 제한 우회
+
+import ssl
+import urllib.request
+
+VIBE_BASE = "https://localhost:47990"
+_ssl_ctx = ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = ssl.CERT_NONE
+
+
+@app.api_route("/api/vibe/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def vibe_proxy(path: str, request: Request) -> Response:
+    """Vibeshine API 프록시 — /api/vibe/* → https://localhost:47990/api/*"""
+    url = f"{VIBE_BASE}/api/{path}"
+    query = str(request.query_params)
+    if query:
+        url += f"?{query}"
+
+    body = await request.body()
+    method = request.method
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=body if body else None,
+            method=method,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, context=_ssl_ctx, timeout=30) as resp:
+            resp_body = resp.read()
+            return Response(
+                content=resp_body,
+                status_code=resp.status,
+                media_type="application/json",
+            )
+    except urllib.error.HTTPError as e:
+        resp_body = e.read()
+        return Response(content=resp_body, status_code=e.code, media_type="application/json")
+    except Exception as e:
+        logger.warning("Vibeshine proxy error: %s", e)
+        return Response(
+            content=json.dumps({"error": str(e)}),
+            status_code=502,
+            media_type="application/json",
+        )
+
+
 # --- Static file serving (production build) ---
 WEB_DIST = Path(__file__).parent.parent / "web" / "dist"
 if WEB_DIST.exists():

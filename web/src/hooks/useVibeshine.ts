@@ -2,8 +2,8 @@
 import { useCallback, useRef } from 'react'
 import { useStreamStore } from '../stores/streamStore'
 
-// Vibeshine API 기본 주소 (같은 PC에서 실행)
-const VIBE_BASE = 'https://localhost:47990'
+// Vibeshine API — 네 서버를 통해 프록시 (mixed content 우회)
+const VIBE_BASE = ''  // 같은 origin, /api/vibe/* → Vibeshine /api/*
 
 interface VibeSession {
   sessionId: string
@@ -31,7 +31,7 @@ export function useVibeshine() {
     }
     // End Vibeshine session
     if (sessionIdRef.current) {
-      fetch(`${VIBE_BASE}/api/webrtc/sessions/${sessionIdRef.current}`, {
+      fetch(`${VIBE_BASE}/api/vibe/webrtc/sessions/${sessionIdRef.current}`, {
         method: 'DELETE',
         keepalive: true,
       }).catch(() => {})
@@ -55,7 +55,7 @@ export function useVibeshine() {
 
     try {
       // 1. Create Vibeshine session
-      const sessionRes = await fetch(`${VIBE_BASE}/api/webrtc/sessions`, {
+      const sessionRes = await fetch(`${VIBE_BASE}/api/vibe/webrtc/sessions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -126,7 +126,7 @@ export function useVibeshine() {
       const flushCandidates = async () => {
         if (!pendingCandidates.length || !sessionIdRef.current) return
         const batch = pendingCandidates.splice(0)
-        await fetch(`${VIBE_BASE}/api/webrtc/sessions/${sessionIdRef.current}/ice`, {
+        await fetch(`${VIBE_BASE}/api/vibe/webrtc/sessions/${sessionIdRef.current}/ice`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -151,7 +151,7 @@ export function useVibeshine() {
       await pc.setLocalDescription(offer)
 
       // 4. Send offer to Vibeshine
-      const offerRes = await fetch(`${VIBE_BASE}/api/webrtc/sessions/${session.sessionId}/offer`, {
+      const offerRes = await fetch(`${VIBE_BASE}/api/vibe/webrtc/sessions/${session.sessionId}/offer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,7 +171,7 @@ export function useVibeshine() {
       if (!answerSdp) {
         const start = Date.now()
         while (Date.now() - start < 30000) {
-          const ansRes = await fetch(`${VIBE_BASE}/api/webrtc/sessions/${session.sessionId}/answer`)
+          const ansRes = await fetch(`${VIBE_BASE}/api/vibe/webrtc/sessions/${session.sessionId}/answer`)
           if (ansRes.ok) {
             const ansData = await ansRes.json()
             if (ansData.sdp) {
@@ -194,7 +194,7 @@ export function useVibeshine() {
         while (!stopped && sessionIdRef.current) {
           try {
             const res = await fetch(
-              `${VIBE_BASE}/api/webrtc/sessions/${sessionIdRef.current}/ice?since=${lastIndex}`
+              `${VIBE_BASE}/api/vibe/webrtc/sessions/${sessionIdRef.current}/ice?since=${lastIndex}`
             )
             if (res.ok) {
               const data = await res.json()
