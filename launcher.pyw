@@ -1,7 +1,6 @@
 """
 Ideality Remote Desktop — 트레이 아이콘 런처
 더블클릭으로 실행, 트레이에서 시작/중지/브라우저 열기.
-Sunshine + Ideality 서버 동시 실행 지원.
 """
 import os
 import subprocess
@@ -15,31 +14,6 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 VENV_PYTHON = os.path.join(ROOT, "venv", "Scripts", "python.exe")
 HOST_MAIN = os.path.join(ROOT, "host", "main.py")
 PORT = 8080
-
-# Sunshine 경로 (설치된 경우)
-SUNSHINE_PATHS = [
-    os.path.join(ROOT, "sunshine", "sunshine.exe"),         # 포터블 (프로젝트 내)
-    os.path.expandvars(r"%ProgramFiles%\Sunshine\sunshine.exe"),  # 기본 설치
-    os.path.expandvars(r"%ProgramFiles(x86)%\Sunshine\sunshine.exe"),
-]
-
-
-def _find_sunshine() -> str | None:
-    """Sunshine 실행 파일 탐색."""
-    for path in SUNSHINE_PATHS:
-        if os.path.exists(path):
-            return path
-    # PATH에서도 찾기
-    try:
-        result = subprocess.run(
-            ["where", "sunshine"], capture_output=True, text=True, timeout=3,
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-        if result.returncode == 0:
-            return result.stdout.strip().split('\n')[0]
-    except Exception:
-        pass
-    return None
 
 
 def _get_tailscale_ip() -> str | None:
@@ -60,16 +34,14 @@ def _get_tailscale_ip() -> str | None:
 class IdealityLauncher:
     def __init__(self):
         self.process = None
-        self.sunshine_process = None
         self.running = False
         self.auto_restart = True
         self.restart_count = 0
         self.max_restarts = 3
-        self.sunshine_path = _find_sunshine()
 
         self.root = tk.Tk()
         self.root.title("Ideality Remote Desktop")
-        self.root.geometry("420x340")
+        self.root.geometry("400x300")
         self.root.resizable(False, False)
         self.root.configure(bg="#1a1a2e")
         self.root.protocol("WM_DELETE_WINDOW", self.minimize_to_tray)
@@ -78,7 +50,7 @@ class IdealityLauncher:
         tk.Label(
             self.root, text="Ideality Remote Desktop",
             font=("Segoe UI", 14, "bold"), fg="#e0e0e0", bg="#1a1a2e"
-        ).pack(pady=(15, 3))
+        ).pack(pady=(20, 5))
 
         # Status
         self.status_var = tk.StringVar(value="Stopped")
@@ -86,16 +58,7 @@ class IdealityLauncher:
             self.root, textvariable=self.status_var,
             font=("Segoe UI", 11), fg="#ff6b6b", bg="#1a1a2e"
         )
-        self.status_label.pack(pady=3)
-
-        # Sunshine status
-        self.sunshine_var = tk.StringVar(
-            value=f"Sunshine: {'Found' if self.sunshine_path else 'Not found'}"
-        )
-        tk.Label(
-            self.root, textvariable=self.sunshine_var,
-            font=("Segoe UI", 8), fg="#888", bg="#1a1a2e"
-        ).pack(pady=1)
+        self.status_label.pack(pady=5)
 
         # URL
         self.url_var = tk.StringVar(value="")
@@ -106,17 +69,17 @@ class IdealityLauncher:
 
         # Buttons
         btn_frame = tk.Frame(self.root, bg="#1a1a2e")
-        btn_frame.pack(pady=15)
+        btn_frame.pack(pady=20)
 
         self.start_btn = tk.Button(
-            btn_frame, text="▶ Start All", command=self.start_all,
+            btn_frame, text="▶ Start Server", command=self.start_server,
             font=("Segoe UI", 10), bg="#2d6a4f", fg="white",
             width=14, relief="flat", cursor="hand2"
         )
         self.start_btn.grid(row=0, column=0, padx=5)
 
         self.stop_btn = tk.Button(
-            btn_frame, text="■ Stop All", command=self.stop_all,
+            btn_frame, text="■ Stop Server", command=self.stop_server,
             font=("Segoe UI", 10), bg="#d32f2f", fg="white",
             width=14, relief="flat", state="disabled", cursor="hand2"
         )
@@ -126,11 +89,11 @@ class IdealityLauncher:
             self.root, text="Open in Browser", command=self.open_browser,
             font=("Segoe UI", 9), bg="#1a1a2e", fg="#64b5f6",
             relief="flat", cursor="hand2", bd=0
-        ).pack(pady=3)
+        ).pack(pady=5)
 
         # Log area
         self.log_text = tk.Text(
-            self.root, height=5, bg="#0d1117", fg="#8b949e",
+            self.root, height=4, bg="#0d1117", fg="#8b949e",
             font=("Consolas", 8), relief="flat", state="disabled"
         )
         self.log_text.pack(fill="x", padx=10, pady=(5, 10))
@@ -146,60 +109,13 @@ class IdealityLauncher:
         self.log_text.see("end")
         self.log_text.config(state="disabled")
 
-    def start_all(self):
-        """Start Ideality server + Sunshine (if available)."""
-        if self.running:
-            return
-
-        # Start Sunshine first (if found)
-        if self.sunshine_path:
-            self._start_sunshine()
-
-        # Start Ideality server
-        self.start_server()
-
-    def stop_all(self):
-        """Stop both Ideality server and Sunshine."""
-        self.auto_restart = False
-        self._stop_sunshine()
-        self._stop_server()
-
-    def _start_sunshine(self):
-        """Start Sunshine in background."""
-        if not self.sunshine_path:
-            return
-        try:
-            self.sunshine_process = subprocess.Popen(
-                [self.sunshine_path],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            self.sunshine_var.set(f"Sunshine: Running (PID {self.sunshine_process.pid})")
-            self.log(f"Sunshine started: {self.sunshine_path}")
-        except Exception as e:
-            self.log(f"Sunshine failed: {e}")
-            self.sunshine_var.set("Sunshine: Failed to start")
-
-    def _stop_sunshine(self):
-        """Stop Sunshine process."""
-        if self.sunshine_process:
-            self.log("Stopping Sunshine...")
-            self.sunshine_process.terminate()
-            try:
-                self.sunshine_process.wait(timeout=5)
-            except Exception:
-                self.sunshine_process.kill()
-            self.sunshine_process = None
-            self.sunshine_var.set(f"Sunshine: {'Found' if self.sunshine_path else 'Not found'}")
-
     def start_server(self):
         if self.running:
             return
 
         self.auto_restart = True
         self.restart_count = 0
-        self.log("Starting Ideality server...")
+        self.log("Starting server...")
         self.start_btn.config(state="disabled")
 
         def run():
@@ -265,9 +181,10 @@ class IdealityLauncher:
         self.start_server()
         self.restart_count = count
 
-    def _stop_server(self):
+    def stop_server(self):
+        self.auto_restart = False
         if self.process:
-            self.log("Stopping Ideality server...")
+            self.log("Stopping server...")
             self.process.terminate()
             try:
                 self.process.wait(timeout=3)
@@ -306,8 +223,6 @@ class IdealityLauncher:
 
     def run(self):
         self.root.mainloop()
-        # Cleanup on exit
-        self._stop_sunshine()
         if self.process:
             self.process.terminate()
             try:
