@@ -60,7 +60,7 @@ interface StreamStore {
   // API
   updateSettings: (settings: Partial<StreamSettings>) => Promise<void>
   fetchSystemInfo: () => Promise<void>
-  fetchProcesses: () => Promise<void>
+  fetchProcesses: (refresh?: boolean) => Promise<void>
   createWindowStream: (hwnd: number, title: string) => Promise<number | null>
   deleteStream: (streamId: number) => Promise<void>
 }
@@ -221,9 +221,9 @@ export const useStreamStore = create<StreamStore>((set) => ({
     } catch { /* ignore */ }
   },
 
-  fetchProcesses: async () => {
+  fetchProcesses: async (refresh = true) => {
     try {
-      const res = await fetch(`${API_BASE}/api/processes`)
+      const res = await fetch(`${API_BASE}/api/processes${refresh ? '?refresh=true' : ''}`)
       if (!res.ok) return
       set({ processes: await res.json() })
     } catch { /* ignore */ }

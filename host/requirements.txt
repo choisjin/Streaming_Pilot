@@ -14,4 +14,3 @@ pyserial>=3.5
 pyotp>=2.9.0
 qrcode>=7.0
 pyjwt>=2.0.0
-httpx>=0.28.0

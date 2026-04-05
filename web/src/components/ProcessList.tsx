@@ -39,7 +39,7 @@ export default function ProcessList() {
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
         <h2 className="text-sm font-semibold">Windows</h2>
         <div className="flex gap-2">
-          <button onClick={fetchProcesses} className="text-xs text-blue-400 hover:text-blue-300">Refresh</button>
+          <button onClick={() => fetchProcesses(true)} className="text-xs text-blue-400 hover:text-blue-300">Refresh</button>
           <button onClick={toggleProcessList} className="text-gray-400 hover:text-white text-lg leading-none">✕</button>
         </div>
       </div>
