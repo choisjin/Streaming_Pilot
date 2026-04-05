@@ -51,6 +51,7 @@ class CustomVideoTrack(MediaStreamTrack):
         self._start_time: float | None = None
         self._frame_count = 0
         self._last_frame: np.ndarray | None = None  # Cache last frame
+        self._stale_count = 0
 
     async def recv(self) -> av.VideoFrame:
         """aiortc가 호출. 최신 프레임 사용, 없으면 마지막 프레임 재사용."""
@@ -73,8 +74,14 @@ class CustomVideoTrack(MediaStreamTrack):
             if len(frame_np.shape) == 3 and frame_np.shape[2] == 4:
                 frame_np = np.ascontiguousarray(frame_np[:, :, :3])
             self._last_frame = frame_np
+            self._stale_count = 0
             bgr = frame_np
         elif self._last_frame is not None:
+            self._stale_count += 1
+            if self._stale_count == self._fps * 3:
+                logger.warning("VideoTrack: no new frames for ~3s (stale)")
+            elif self._stale_count == self._fps * 10:
+                logger.error("VideoTrack: no new frames for ~10s — capture may be dead")
             bgr = self._last_frame
         else:
             bgr = np.zeros((self._height, self._width, 3), dtype=np.uint8)

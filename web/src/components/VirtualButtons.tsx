@@ -125,8 +125,7 @@ export default function VirtualButtons({ onAction, visible, onToggle, mouseMode,
 
   const KeyBtn = ({ label, code, wide }: { label: string; code: string; wide?: boolean }) => (
     <button
-      onTouchStart={(e) => { e.stopPropagation(); pressKey(code) }}
-      onMouseDown={(e) => { e.stopPropagation(); pressKey(code) }}
+      onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); pressKey(code) }}
       className={`${wide ? 'px-3' : 'px-1.5'} py-2 rounded text-xs font-medium bg-gray-700/60 text-gray-200 active:bg-gray-500 border border-gray-600/50 select-none min-w-[28px] text-center`}
     >{label}</button>
   )
@@ -164,8 +163,7 @@ export default function VirtualButtons({ onAction, visible, onToggle, mouseMode,
                 {buttons.map((btn) => (
                   <div key={btn.id} className="relative">
                     <button
-                      onTouchStart={(e) => { e.stopPropagation(); handlePress(btn) }}
-                      onMouseDown={(e) => { e.stopPropagation(); handlePress(btn) }}
+                      onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); handlePress(btn) }}
                       className={`px-2 py-1.5 rounded text-[11px] font-medium select-none active:scale-95 ${btn.color || 'bg-gray-700/50'} text-gray-200 border border-gray-600/50`}>
                       {btn.icon ? `${btn.icon} ${btn.label}` : btn.label}
                     </button>
@@ -210,8 +208,7 @@ export default function VirtualButtons({ onAction, visible, onToggle, mouseMode,
                 {KB_ROW2.map((k) => <KeyBtn key={k.code} label={shift ? k.label : k.label.toLowerCase()} code={k.code} />)}
               </div>
               <div className="flex gap-0.5 justify-center">
-                <button onMouseDown={(e) => { e.stopPropagation(); setShift(!shift) }}
-                  onTouchStart={(e) => { e.stopPropagation(); setShift(!shift) }}
+                <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); setShift(!shift) }}
                   className={`px-2 py-2 rounded text-[10px] font-medium select-none border border-gray-600/50 ${shift ? 'bg-blue-600 text-white' : 'bg-gray-700/60 text-gray-400'}`}>
                   ⇧
                 </button>
@@ -221,8 +218,7 @@ export default function VirtualButtons({ onAction, visible, onToggle, mouseMode,
               <div className="flex gap-0.5 justify-center">
                 <KeyBtn label="Ctrl" code="ControlLeft" wide />
                 <KeyBtn label="Alt" code="AltLeft" wide />
-                <button onTouchStart={(e) => { e.stopPropagation(); pressKey('Space') }}
-                  onMouseDown={(e) => { e.stopPropagation(); pressKey('Space') }}
+                <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); pressKey('Space') }}
                   className="flex-1 py-2 rounded text-xs bg-gray-700/60 text-gray-200 active:bg-gray-500 border border-gray-600/50 select-none">
                   Space
                 </button>
@@ -238,8 +234,7 @@ export default function VirtualButtons({ onAction, visible, onToggle, mouseMode,
                 <div key={i} className="flex gap-0.5 justify-center">
                   {row.map((k) => (
                     <button key={k}
-                      onTouchStart={(e) => { e.stopPropagation(); pressKey(k >= '0' && k <= '9' ? `Digit${k}` : k === '.' ? 'Period' : 'Minus') }}
-                      onMouseDown={(e) => { e.stopPropagation(); pressKey(k >= '0' && k <= '9' ? `Digit${k}` : k === '.' ? 'Period' : 'Minus') }}
+                      onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); pressKey(k >= '0' && k <= '9' ? `Digit${k}` : k === '.' ? 'Period' : 'Minus') }}
                       className="w-12 py-2.5 rounded text-sm font-medium bg-gray-700/60 text-gray-200 active:bg-gray-500 border border-gray-600/50 select-none text-center">
                       {k}
                     </button>
@@ -258,8 +253,7 @@ export default function VirtualButtons({ onAction, visible, onToggle, mouseMode,
         {/* Mouse mode toggle — right side */}
         <button
           onPointerUp={(e) => { e.stopPropagation(); onMouseModeChange() }}
-          onTouchStart={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           className={`w-12 rounded-lg flex flex-col items-center justify-center text-lg font-bold shadow-lg border select-none flex-shrink-0 active:scale-95 ${MODE_COLORS[mouseMode]}`}
           title={mouseMode === 'L' ? 'Left Click' : mouseMode === 'R' ? 'Right Click' : 'E-Key'}>
           {mouseMode}

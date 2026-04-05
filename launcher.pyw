@@ -16,10 +16,24 @@ HOST_MAIN = os.path.join(ROOT, "host", "main.py")
 PORT = 8080
 
 
+def _get_tailscale_ip() -> str | None:
+    """Tailscale IPv4 주소 조회."""
+    try:
+        result = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True, text=True, timeout=3,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
 class IdealityLauncher:
     def __init__(self):
         self.process = None
-        self.tunnel_process = None
         self.running = False
         self.auto_restart = True
         self.restart_count = 0
@@ -117,10 +131,6 @@ class IdealityLauncher:
                 self.running = True
                 self.root.after(0, self._update_ui_running)
 
-                # Start Cloudflare Tunnel (only if not already running)
-                if not self.tunnel_process or self.tunnel_process.poll() is not None:
-                    self._start_tunnel()
-
                 for line in self.process.stdout:
                     line = line.strip()
                     if line:
@@ -143,7 +153,6 @@ class IdealityLauncher:
                         except: pass
                         self.process = None
 
-                    # Keep tunnel alive — don't kill it on restart
                     # Kill any leftover processes on port 8080
                     try:
                         subprocess.run(
@@ -177,15 +186,6 @@ class IdealityLauncher:
 
     def stop_server(self):
         self.auto_restart = False  # 수동 종료 시 재시작 안 함
-        if self.tunnel_process:
-            self.log("Stopping tunnel...")
-            self.tunnel_process.terminate()
-            try:
-                self.tunnel_process.wait(timeout=3)
-            except Exception:
-                self.tunnel_process.kill()
-            self.tunnel_process = None
-
         if self.process:
             self.log("Stopping server...")
             self.process.terminate()
@@ -196,20 +196,6 @@ class IdealityLauncher:
             self.process = None
             self.running = False
             self._update_ui_stopped()
-
-    def _start_tunnel(self):
-        """Cloudflare Tunnel 시작."""
-        try:
-            cloudflared = "cloudflared"
-            self.tunnel_process = subprocess.Popen(
-                [cloudflared, "tunnel", "run", "ideality-remote"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW,
-            )
-            self.root.after(0, self.log, "Cloudflare Tunnel started (remote.ideality.kr)")
-        except FileNotFoundError:
-            self.root.after(0, self.log, "cloudflared not found — tunnel disabled")
 
     def open_browser(self):
         webbrowser.open(f"http://localhost:{PORT}")
@@ -223,7 +209,11 @@ class IdealityLauncher:
     def _update_ui_running(self):
         self.status_var.set("● Running")
         self.status_label.config(fg="#4caf50")
-        self.url_var.set(f"http://localhost:{PORT}  |  https://remote.ideality.kr")
+        ts_ip = _get_tailscale_ip()
+        if ts_ip:
+            self.url_var.set(f"Local: localhost:{PORT}  |  Tailscale: {ts_ip}:{PORT}")
+        else:
+            self.url_var.set(f"Local: localhost:{PORT}  |  Tailscale: not connected")
         self.start_btn.config(state="disabled")
         self.stop_btn.config(state="normal")
 
@@ -236,8 +226,6 @@ class IdealityLauncher:
 
     def run(self):
         self.root.mainloop()
-        if self.tunnel_process:
-            self.tunnel_process.terminate()
         if self.process:
             self.process.terminate()
             try:

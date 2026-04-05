@@ -9,13 +9,34 @@ export function useInputCapture(streamId: number) {
   const elRef = useRef<HTMLDivElement | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
 
-  // WebSocket 연결
+  // WebSocket 연결 (자동 재연결)
   useEffect(() => {
-    const ws = new WebSocket(WS_URL)
-    ws.onopen = () => console.log('Input WS connected')
-    ws.onclose = () => console.log('Input WS closed')
-    wsRef.current = ws
-    return () => { ws.close(); wsRef.current = null }
+    let closing = false
+    let retries = 0
+    const MAX_WS_RETRIES = 3
+
+    function createWs() {
+      const ws = new WebSocket(WS_URL)
+      ws.onopen = () => {
+        console.log('Input WS connected')
+        retries = 0
+      }
+      ws.onerror = (e) => console.warn('Input WS error:', e)
+      ws.onclose = () => {
+        console.log('Input WS closed')
+        wsRef.current = null
+        if (!closing && retries < MAX_WS_RETRIES) {
+          retries += 1
+          const delay = Math.min(1000 * Math.pow(2, retries - 1), 8000)
+          console.log(`Input WS reconnect #${retries} in ${delay}ms`)
+          setTimeout(createWs, delay)
+        }
+      }
+      wsRef.current = ws
+    }
+
+    createWs()
+    return () => { closing = true; wsRef.current?.close(); wsRef.current = null }
   }, [])
 
   const send = useCallback((msg: Record<string, unknown>) => {

@@ -49,6 +49,7 @@ webrtc_manager: WebRTCManager | None = None
 # Window streams: stream_id -> (WGCCapture, asyncio.Queue, WebRTCManager)
 window_streams: dict[int, dict] = {}
 next_stream_id = 1
+turn_servers: list[dict] = []
 arduino = ArduinoHID(port="COM6")
 input_handler: InputHandler | None = None
 auth = AuthManager()
@@ -64,7 +65,7 @@ admin = AdminState()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
-    global desktop_capture, encoder_manager, webrtc_manager
+    global desktop_capture, encoder_manager, webrtc_manager, turn_servers
 
     settings = settings_manager.get_current()
 
@@ -85,7 +86,7 @@ async def lifespan(app: FastAPI):  # type: ignore[no-untyped-def]
     encoder_name = await encoder_manager.initialize()
     logger.info("Encoder initialized: %s", encoder_name)
 
-    # Desktop WebRTC manager (stream 0)
+    # Desktop WebRTC manager (stream 0) — STUN only (Tailscale handles connectivity)
     webrtc_manager = WebRTCManager(
         frame_queue=frame_queue,
         stun_servers=host_config.stun_servers,
@@ -195,6 +196,7 @@ class SettingsRequest(BaseModel):
     bitrate: str | None = None
     resolution: str | None = None
     adaptive: bool | None = None
+    game_mode: bool | None = None
 
 
 class CreateStreamRequest(BaseModel):
@@ -316,9 +318,9 @@ async def handle_ice(candidate: IceCandidateRequest) -> dict[str, str]:
 # --- Process / Stream APIs ---
 
 @app.get("/api/processes")
-async def list_processes() -> list[dict[str, Any]]:
-    """윈도우가 있는 프로세스 목록."""
-    windows = get_window_list()
+async def list_processes(refresh: bool = False) -> list[dict[str, Any]]:
+    """윈도우가 있는 프로세스 목록 (캐시 5초, refresh=true로 강제 갱신)."""
+    windows = get_window_list(force=refresh)
     return [
         {
             "hwnd": w.hwnd,
@@ -398,10 +400,11 @@ async def create_stream(req: CreateStreamRequest) -> dict[str, Any]:
     )
     await cap.start(q)
 
-    # Create WebRTC manager for this stream
+    # Create WebRTC manager for this stream (with TURN)
     wm = WebRTCManager(
         frame_queue=q,
         stun_servers=host_config.stun_servers,
+        turn_servers=turn_servers,
         fps=req.fps,
         width=win_w,
         height=win_h,
@@ -448,6 +451,7 @@ async def get_settings() -> dict[str, Any]:
         "resolution": f"{s.resolution[0]}x{s.resolution[1]}",
         "adaptive": s.adaptive,
         "encoder": encoder_manager.active_encoder_name if encoder_manager else "none",
+        "game_mode": host_config.game_mode,
     }
 
 
@@ -463,7 +467,13 @@ async def update_settings(req: SettingsRequest) -> dict[str, Any]:
     if req.adaptive is not None:
         kwargs["adaptive"] = req.adaptive
 
-    if not kwargs:
+    # game_mode는 별도 처리 (settings_manager 밖)
+    if req.game_mode is not None:
+        host_config.game_mode = req.game_mode
+        if input_handler:
+            input_handler.set_game_mode(req.game_mode)
+
+    if not kwargs and req.game_mode is None:
         raise HTTPException(status_code=400, detail="No settings to update")
 
     try:
@@ -561,8 +571,16 @@ async def ws_input(ws: WebSocket) -> None:
                 input_handler.handle_message(msg)
     except WebSocketDisconnect:
         logger.info("Input WebSocket disconnected")
+        if input_handler:
+            input_handler.release_all_tracked()
+        elif arduino:
+            arduino.release_all()
     except Exception:
         logger.exception("Input WebSocket error")
+        if input_handler:
+            input_handler.release_all_tracked()
+        elif arduino:
+            arduino.release_all()
 
 
 @app.post("/api/admin/focus/{stream_id}")
@@ -642,41 +660,50 @@ async def get_turn_usage() -> dict[str, Any]:
 
 @app.post("/api/turn/track")
 async def track_turn_usage(request: Request) -> dict[str, str]:
-    """클라이언트에서 보고한 TURN 트래픽 기록."""
-    data = await request.json()
-    bytes_count = data.get("bytes", 0)
-    if bytes_count > 0:
-        _track_usage(bytes_count)
+    """TURN 트래픽 기록 (Tailscale 전환으로 no-op)."""
     return {"status": "ok"}
 
 
 @app.get("/api/turn/credentials")
 async def get_turn_credentials() -> dict[str, Any]:
-    """Cloudflare TURN credentials 생성."""
-    import httpx
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"https://rtc.live.cloudflare.com/v1/turn/keys/{host_config.turn_key_id}/credentials/generate-ice-servers",
-                headers={
-                    "Authorization": f"Bearer {host_config.turn_api_token}",
-                    "Content-Type": "application/json",
-                },
-                json={"ttl": 86400},
-                timeout=10,
-            )
-            if resp.status_code == 201:
-                return resp.json()
-            logger.warning("TURN credentials failed: %d", resp.status_code)
-    except Exception as e:
-        logger.warning("TURN credentials error: %s", e)
-
-    # Fallback: STUN only
+    """ICE 서버 설정 — STUN only (Tailscale이 P2P 연결 처리)."""
     return {
         "iceServers": [
-            {"urls": ["stun:stun.cloudflare.com:3478"]},
+            {"urls": ["stun:stun.l.google.com:19302"]},
         ]
     }
+
+
+@app.get("/api/network/status")
+async def get_network_status() -> dict[str, Any]:
+    """네트워크 상태 — Tailscale 연결 여부 + IP."""
+    import subprocess as sp
+    import socket
+
+    result: dict[str, Any] = {"localIP": "", "tailscale": {"connected": False, "ip": ""}}
+
+    # Local IP
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        result["localIP"] = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    # Tailscale IP
+    try:
+        proc = sp.run(
+            ["tailscale", "ip", "-4"],
+            capture_output=True, text=True, timeout=3,
+            creationflags=sp.CREATE_NO_WINDOW,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            result["tailscale"] = {"connected": True, "ip": proc.stdout.strip()}
+    except (FileNotFoundError, sp.TimeoutExpired):
+        pass
+
+    return result
 
 
 @app.get("/api/arduino/status")

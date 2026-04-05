@@ -3,12 +3,14 @@ import { useCallback, useRef } from 'react'
 import { useStreamStore } from '../stores/streamStore'
 
 const API_BASE = ''
+const MAX_RETRIES = 5
 
 export function useWebRTC(streamId: number) {
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const statsInterval = useRef<ReturnType<typeof setInterval>>()
   const connectingRef = useRef(false)
+  const retryCountRef = useRef(0)
 
   const cleanup = useCallback(() => {
     if (statsInterval.current) {
@@ -34,18 +36,8 @@ export function useWebRTC(streamId: number) {
     useStreamStore.getState().updatePanelConnection(streamId, { status: 'connecting', error: undefined })
 
     try {
-      // Fetch TURN credentials from server
-      let iceServers: RTCIceServer[] = [{ urls: 'stun:stun.cloudflare.com:3478' }]
-      try {
-        const turnRes = await fetch(`${API_BASE}/api/turn/credentials`)
-        if (turnRes.ok) {
-          const turnData = await turnRes.json()
-          if (turnData.iceServers) {
-            iceServers = turnData.iceServers
-          }
-        }
-      } catch { /* fallback to STUN only */ }
-
+      // STUN only — Tailscale handles P2P connectivity
+      const iceServers: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
       const pc = new RTCPeerConnection({ iceServers })
       pcRef.current = pc
 
@@ -56,6 +48,15 @@ export function useWebRTC(streamId: number) {
         if (videoRef.current) {
           videoRef.current.srcObject = stream
         }
+        // Track-level event handlers for detecting dead streams
+        const track = event.track
+        track.onended = () => {
+          console.warn('Video track ended, triggering reconnect')
+          scheduleReconnect()
+        }
+        track.onmute = () => {
+          console.warn('Video track muted')
+        }
       }
 
       pc.onconnectionstatechange = () => {
@@ -63,10 +64,12 @@ export function useWebRTC(streamId: number) {
         if (state === 'connected') {
           useStreamStore.getState().updatePanelConnection(streamId, { status: 'connected' })
           connectingRef.current = false
+          retryCountRef.current = 0
           startStatsPolling(pc)
-        } else if (state === 'failed') {
+        } else if (state === 'failed' || state === 'disconnected') {
           connectingRef.current = false
-          useStreamStore.getState().updatePanelConnection(streamId, { status: 'failed', error: 'Connection failed' })
+          useStreamStore.getState().updatePanelConnection(streamId, { status: 'failed', error: 'Connection lost' })
+          scheduleReconnect()
         }
       }
 
@@ -105,17 +108,35 @@ export function useWebRTC(streamId: number) {
       connectingRef.current = false
       const msg = e instanceof Error ? e.message : 'Connection failed'
       useStreamStore.getState().updatePanelConnection(streamId, { status: 'failed', error: msg })
+      scheduleReconnect()
     }
   }, [streamId, cleanup])
 
+  const scheduleReconnect = useCallback(() => {
+    if (retryCountRef.current >= MAX_RETRIES) {
+      useStreamStore.getState().updatePanelConnection(streamId, {
+        status: 'failed',
+        error: `Max retries (${MAX_RETRIES}) reached`,
+      })
+      return
+    }
+    const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000)
+    retryCountRef.current += 1
+    console.log(`WebRTC reconnect #${retryCountRef.current} in ${delay}ms`)
+    setTimeout(() => connect(), delay)
+  }, [streamId, connect])
+
   const disconnect = useCallback(() => {
+    retryCountRef.current = MAX_RETRIES // Prevent auto-reconnect
     cleanup()
     useStreamStore.getState().updatePanelConnection(streamId, { status: 'disconnected' })
   }, [streamId, cleanup])
 
   const startStatsPolling = useCallback((pc: RTCPeerConnection) => {
     if (statsInterval.current) clearInterval(statsInterval.current)
-    let prevBytes = 0, prevTs = 0, totalReported = 0
+    let prevBytes = 0, prevTs = 0
+    let zeroFpsCount = 0
+    let hadFirstFrame = false
 
     statsInterval.current = setInterval(async () => {
       if (pc.connectionState !== 'connected') return
@@ -124,24 +145,32 @@ export function useWebRTC(streamId: number) {
         stats.forEach((report) => {
           if (report.type === 'inbound-rtp' && report.kind === 'video') {
             const cur = report.bytesReceived ?? 0
+            const fps = report.framesPerSecond ?? 0
+
             if (prevTs > 0) {
               const dt = (report.timestamp - prevTs) / 1000
               const bitrate = ((cur - prevBytes) * 8) / dt
               useStreamStore.getState().updatePanelStats(streamId, {
-                fps: report.framesPerSecond ?? 0,
+                fps,
                 bitrate: Math.round(bitrate / 1000),
                 packetsLost: report.packetsLost ?? 0,
               })
             }
-            // Track TURN usage every 500KB
-            if (cur - totalReported > 500000) {
-              fetch(`${API_BASE}/api/turn/track`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bytes: cur - totalReported }),
-              }).catch(() => {})
-              totalReported = cur
+
+            // FPS-based health check: detect frozen streams
+            if (fps > 0) {
+              hadFirstFrame = true
+              zeroFpsCount = 0
+            } else if (hadFirstFrame) {
+              zeroFpsCount += 1
+              if (zeroFpsCount >= 5) {
+                console.warn('0 FPS for 5s, triggering reconnect')
+                zeroFpsCount = 0
+                cleanup()
+                scheduleReconnect()
+              }
             }
+
             prevBytes = cur
             prevTs = report.timestamp
           }
@@ -153,7 +182,7 @@ export function useWebRTC(streamId: number) {
         })
       } catch { /* ignore */ }
     }, 1000)
-  }, [streamId])
+  }, [streamId, cleanup, scheduleReconnect])
 
   return { videoRef, connect, disconnect }
 }

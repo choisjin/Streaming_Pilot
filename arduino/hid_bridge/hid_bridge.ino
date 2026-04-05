@@ -26,11 +26,11 @@
  *   PING                  연결 확인 → PONG 응답
  */
 
-// Microsoft 기본 키보드로 위장
-#define USB_VID 0x045E
-#define USB_PID 0x0750
-#define USB_MANUFACTURER "Microsoft"
-#define USB_PRODUCT "USB Keyboard"
+// Arduino Leonardo 기본 VID:PID (위장 없음 — 정상 USB 장치로 인식)
+#define USB_VID 0x2341
+#define USB_PID 0x8036
+#define USB_MANUFACTURER "Arduino LLC"
+#define USB_PRODUCT "Arduino Leonardo"
 
 #include <Keyboard.h>
 #include <Mouse.h>

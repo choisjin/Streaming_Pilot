@@ -61,11 +61,18 @@ SPECIAL_KEYS: dict[str, str] = {
 class InputHandler:
     """WebSocket 입력 → 좌표 변환 → Arduino HID."""
 
-    def __init__(self, arduino: ArduinoHID, screen_w: int = 2560, screen_h: int = 1440) -> None:
+    def __init__(self, arduino: ArduinoHID, screen_w: int = 2560, screen_h: int = 1440, game_mode: bool = False) -> None:
         self._arduino = arduino
         self._screen_w = screen_w
         self._screen_h = screen_h
         self._active_hwnd: int | None = None
+        self._pressed_keys: set[int] = set()
+        self._pressed_mouse: set[str] = set()
+        self._game_mode = game_mode
+
+    def set_game_mode(self, enabled: bool) -> None:
+        self._game_mode = enabled
+        logger.info("Game mode: %s", "ON" if enabled else "OFF")
 
     def update_screen_size(self, w: int, h: int) -> None:
         self._screen_w = w
@@ -76,8 +83,8 @@ class InputHandler:
         msg_type = msg.get("type")
         hwnd = msg.get("hwnd")
 
-        # 윈도우 활성화
-        if hwnd and hwnd != self._active_hwnd:
+        # 윈도우 활성화 (게임 모드에서는 SetForegroundWindow 호출 안 함)
+        if hwnd and hwnd != self._active_hwnd and not self._game_mode:
             self._activate_window(hwnd)
 
         if msg_type == "mouse_move":
@@ -122,8 +129,10 @@ class InputHandler:
 
         if action == "down":
             self._arduino.mouse_down(button)
+            self._pressed_mouse.add(button)
         elif action == "up":
             self._arduino.mouse_up(button)
+            self._pressed_mouse.discard(button)
         else:
             self._arduino.mouse_click(button)
 
@@ -162,8 +171,10 @@ class InputHandler:
         logger.info("Key: %s %s → keycode=%d (0x%02X)", code, action, keycode, keycode)
         if action == "down":
             self._arduino.key_down(keycode)
+            self._pressed_keys.add(keycode)
         elif action == "up":
             self._arduino.key_up(keycode)
+            self._pressed_keys.discard(keycode)
 
     def _to_screen(
         self, x: float, y: float, panel_w: float, panel_h: float, hwnd: int | None
@@ -198,3 +209,17 @@ class InputHandler:
             self._active_hwnd = hwnd
         except Exception as e:
             logger.debug("activate_window failed: %s", e)
+
+    def release_all_tracked(self) -> None:
+        """추적된 눌린 키/마우스 해제 후 release_all 마무리."""
+        if self._pressed_keys:
+            logger.info("Releasing stuck keys: %s", self._pressed_keys)
+            for keycode in list(self._pressed_keys):
+                self._arduino.key_up(keycode)
+            self._pressed_keys.clear()
+        if self._pressed_mouse:
+            logger.info("Releasing stuck mouse buttons: %s", self._pressed_mouse)
+            for btn in list(self._pressed_mouse):
+                self._arduino.mouse_up(btn)
+            self._pressed_mouse.clear()
+        self._arduino.release_all()

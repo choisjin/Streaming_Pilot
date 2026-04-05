@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 import logging
+import time
 from dataclasses import dataclass
 
 import psutil
@@ -13,6 +14,11 @@ logger = logging.getLogger(__name__)
 
 user32 = ctypes.windll.user32
 dwmapi = ctypes.windll.dwmapi
+
+# 윈도우 목록 캐시 (안티치트 안전: EnumWindows 호출 빈도 최소화)
+_window_cache: list[WindowInfo] = []
+_cache_time: float = 0.0
+_CACHE_TTL: float = 5.0  # 5초 캐시
 
 
 @dataclass
@@ -28,11 +34,16 @@ class WindowInfo:
     is_visible: bool
 
 
-def get_window_list() -> list[WindowInfo]:
+def get_window_list(force: bool = False) -> list[WindowInfo]:
     """실행중인 프로세스 중 보이는 윈도우가 있는 것만 반환.
 
-    필터: 보이는 윈도우, 타이틀 있음, 크기 > 0, 특수 윈도우 제외.
+    캐시 TTL 5초 — 안티치트 안전을 위해 EnumWindows 호출 최소화.
+    force=True로 캐시 무시 가능.
     """
+    global _window_cache, _cache_time
+    if not force and _window_cache and (time.time() - _cache_time) < _CACHE_TTL:
+        return _window_cache
+
     windows: list[WindowInfo] = []
     seen_pids: set[int] = set()
 
@@ -66,15 +77,6 @@ def get_window_list() -> list[WindowInfo]:
         if width <= 1 or height <= 1:
             return True
 
-        # Skip cloaked windows (hidden UWP apps)
-        cloaked = ctypes.c_int(0)
-        dwmapi.DwmGetWindowAttribute(
-            hwnd, 14,  # DWMWA_CLOAKED
-            ctypes.byref(cloaked), ctypes.sizeof(cloaked)
-        )
-        if cloaked.value != 0:
-            return True
-
         # Get PID
         pid = ctypes.wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
@@ -101,6 +103,8 @@ def get_window_list() -> list[WindowInfo]:
         return True
 
     user32.EnumWindows(WNDENUMPROC(_enum_callback), 0)
+    _window_cache = windows
+    _cache_time = time.time()
     return windows
 
 

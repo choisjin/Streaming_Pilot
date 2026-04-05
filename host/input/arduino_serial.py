@@ -125,17 +125,13 @@ class ArduinoHID:
 
     @staticmethod
     def _auto_detect() -> str | None:
-        """Arduino Leonardo 자동 감지 (Microsoft 위장 포함)."""
+        """Arduino Leonardo 자동 감지."""
         for port in serial.tools.list_ports.comports():
-            # Leonardo VID:PID = 2341:8036 or 2341:0036
+            # Leonardo VID:PID = 2341:8036 or 2341:8037 or 2341:0036
             if port.vid == 0x2341 and port.pid in (0x8036, 0x8037, 0x0036):
                 logger.info("Arduino Leonardo detected: %s", port.device)
                 return port.device
-            # Microsoft 위장 VID:PID = 045E:0750
-            if port.vid == 0x045E and port.pid == 0x0750:
-                logger.info("Arduino (Microsoft disguise) detected: %s", port.device)
-                return port.device
-            # Generic Arduino
+            # Generic Arduino (manufacturer 기반)
             if port.manufacturer and "Arduino" in port.manufacturer:
                 return port.device
         return None

@@ -73,7 +73,8 @@ def _wgc_process(
 
         @capture.event
         def on_closed() -> None:
-            pass
+            print(f"[WGC] Window closed: {window_name}")
+            stop_event.set()
 
         capture.start()
 
@@ -176,15 +177,30 @@ class WGCCapture:
         shm_buf = np.ndarray((h, w, 3), dtype=np.uint8, buffer=self._shm.buf)  # type: ignore
         last_count = 0
         sleep_time = 0.5 / max(self._fps, 1)  # Check 2x per frame
+        no_frame_count = 0
 
         while self._running:
             cur = self._counter.value if self._counter else 0
             if cur > last_count:
                 last_count = cur
+                no_frame_count = 0
                 frame = shm_buf.copy()
                 self._put_frame(frame)
             else:
                 time.sleep(sleep_time)
+                no_frame_count += 1
+
+            # Check if capture process died
+            if self._process and not self._process.is_alive():
+                logger.warning("WGC process died for '%s'", self._window_name)
+                break
+
+            # Detect prolonged frame starvation
+            if no_frame_count > self._fps * 10:
+                logger.warning("WGC no frames for ~10s: '%s'", self._window_name)
+                no_frame_count = 0  # Reset to avoid log spam
+
+        logger.info("WGC relay ended for '%s'", self._window_name)
 
     def _put_frame(self, frame: np.ndarray) -> None:
         if not self._frame_queue or not self._loop:
