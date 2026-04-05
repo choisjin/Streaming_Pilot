@@ -68,7 +68,7 @@ interface StreamStore {
 let nextTabId = 1
 
 export const useStreamStore = create<StreamStore>((set) => ({
-  settings: { fps: 30, bitrate: '4M', resolution: '1920x1080', adaptive: true, encoder: 'auto' },
+  settings: { fps: 30, bitrate: '4M', resolution: '1920x1080', adaptive: true, encoder: 'auto', game_mode: false },
   systemInfo: null,
   settingsOpen: false,
   processListOpen: false,

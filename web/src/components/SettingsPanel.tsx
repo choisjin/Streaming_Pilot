@@ -16,11 +16,11 @@ export default function SettingsPanel() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
-  const [turnUsage, setTurnUsage] = useState<any>(null)
+  const [networkStatus, setNetworkStatus] = useState<any>(null)
 
   useEffect(() => {
     if (settingsOpen) {
-      fetch('/api/turn/usage').then(r => r.json()).then(setTurnUsage).catch(() => {})
+      fetch('/api/network/status').then(r => r.json()).then(setNetworkStatus).catch(() => {})
     }
   }, [settingsOpen])
 
@@ -75,10 +75,16 @@ export default function SettingsPanel() {
           {RESOLUTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </label>
-      <label className="flex items-center gap-2 mb-4 cursor-pointer">
+      <label className="flex items-center gap-2 mb-2 cursor-pointer">
         <input type="checkbox" checked={settings.adaptive}
           onChange={(e) => updateSettings({ adaptive: e.target.checked })} className="w-4 h-4" />
         <span className="text-sm">Adaptive Mode</span>
+      </label>
+      <label className="flex items-center gap-2 mb-4 cursor-pointer">
+        <input type="checkbox" checked={settings.game_mode ?? false}
+          onChange={(e) => updateSettings({ game_mode: e.target.checked })} className="w-4 h-4" />
+        <span className="text-sm">Game Mode</span>
+        <span className="text-[10px] text-gray-500">(anti-cheat safe)</span>
       </label>
 
       {/* System info */}
@@ -92,38 +98,26 @@ export default function SettingsPanel() {
         )}
       </div>
 
-      {/* TURN Usage */}
-      {turnUsage && (
+      {/* Network Status */}
+      {networkStatus && (
         <div className="border-t border-gray-700 pt-3 mt-3">
-          <h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wide">TURN Usage</h3>
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="text-gray-500">Total</span>
-              <span className="text-gray-300">{turnUsage.totalGB} GB / {turnUsage.freeLimit_GB} GB</span>
+          <h3 className="text-xs text-gray-400 mb-2 uppercase tracking-wide">Network</h3>
+          <div className="space-y-1.5 text-xs">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Local IP</span>
+              <span className="text-gray-300">{networkStatus.localIP || 'N/A'}</span>
             </div>
-            <div className="w-full bg-gray-700 rounded-full h-1.5">
-              <div
-                className={`h-1.5 rounded-full ${turnUsage.usedPercent > 80 ? 'bg-red-500' : turnUsage.usedPercent > 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
-                style={{ width: `${Math.min(100, turnUsage.usedPercent)}%` }}
-              />
+            <div className="flex justify-between">
+              <span className="text-gray-500">Tailscale</span>
+              {networkStatus.tailscale?.connected ? (
+                <span className="text-green-400">{networkStatus.tailscale.ip}</span>
+              ) : (
+                <span className="text-gray-500">Not connected</span>
+              )}
             </div>
-            <div className="flex justify-between text-[10px]">
-              <span className="text-gray-500">{turnUsage.sessions} sessions</span>
-              <span className={turnUsage.costUSD > 0 ? 'text-red-400' : 'text-green-400'}>
-                {turnUsage.costUSD > 0 ? `$${turnUsage.costUSD}` : 'Free'}
-              </span>
-            </div>
-            {Object.keys(turnUsage.daily || {}).length > 0 && (
-              <div className="mt-1">
-                <span className="text-[10px] text-gray-500">Daily (MB):</span>
-                <div className="flex gap-0.5 mt-0.5 overflow-x-auto">
-                  {Object.entries(turnUsage.daily).slice(-7).map(([date, mb]: [string, any]) => (
-                    <div key={date} className="text-center min-w-[32px]">
-                      <div className="text-[9px] text-gray-400">{mb}</div>
-                      <div className="text-[8px] text-gray-600">{date.slice(5)}</div>
-                    </div>
-                  ))}
-                </div>
+            {networkStatus.tailscale?.connected && (
+              <div className="text-[10px] text-gray-500 mt-1">
+                Remote: http://{networkStatus.tailscale.ip}:8080
               </div>
             )}
           </div>

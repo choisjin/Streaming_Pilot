@@ -4,6 +4,7 @@ export interface StreamSettings {
   resolution: string
   adaptive: boolean
   encoder: string
+  game_mode?: boolean
 }
 
 export interface SystemInfo {

@@ -502,6 +502,7 @@ async def update_settings(req: SettingsRequest) -> dict[str, Any]:
             "resolution": f"{new_settings.resolution[0]}x{new_settings.resolution[1]}",
             "adaptive": new_settings.adaptive,
             "encoder": encoder_manager.active_encoder_name if encoder_manager else "none",
+            "game_mode": host_config.game_mode,
         },
     }
 
