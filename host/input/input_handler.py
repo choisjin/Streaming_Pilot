@@ -108,6 +108,9 @@ class InputHandler:
         dx = screen_x - cur.x
         dy = screen_y - cur.y
 
+        logger.info("mouse: panel(%.0f,%.0f/%.0f,%.0f) → screen(%d,%d) cur(%d,%d) dx=%d dy=%d",
+                     x, y, panel_w, panel_h, screen_x, screen_y, cur.x, cur.y, dx, dy)
+
         if dx != 0 or dy != 0:
             self._arduino.mouse_move_relative(dx, dy)
 

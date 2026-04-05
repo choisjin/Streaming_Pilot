@@ -17,7 +17,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -50,7 +50,7 @@ webrtc_manager: WebRTCManager | None = None
 window_streams: dict[int, dict] = {}
 next_stream_id = 1
 turn_servers: list[dict] = []
-arduino = ArduinoHID(port="COM6")
+arduino = ArduinoHID()
 input_handler: InputHandler | None = None
 auth = AuthManager()
 
@@ -716,20 +716,55 @@ async def get_arduino_status() -> dict[str, Any]:
 
 
 # --- Vibeshine API Proxy ---
-# HTTP→HTTPS 프록시: 브라우저의 mixed content 제한 우회
+# HTTP→HTTPS 프록시: 브라우저의 mixed content 제한 우회 + 자동 인증
 
 import ssl
+import http.cookiejar
 import urllib.request
 
 VIBE_BASE = "https://localhost:47990"
+VIBE_USERNAME = "choi3206"
+VIBE_PASSWORD = "sjssjdi12!@"
+
 _ssl_ctx = ssl.create_default_context()
 _ssl_ctx.check_hostname = False
 _ssl_ctx.verify_mode = ssl.CERT_NONE
+_vibe_cookies = http.cookiejar.CookieJar()
+_vibe_opener = urllib.request.build_opener(
+    urllib.request.HTTPCookieProcessor(_vibe_cookies),
+    urllib.request.HTTPSHandler(context=_ssl_ctx),
+)
+_vibe_logged_in = False
+
+
+def _vibe_login() -> bool:
+    """Vibeshine 자동 로그인."""
+    global _vibe_logged_in
+    try:
+        login_data = json.dumps({"username": VIBE_USERNAME, "password": VIBE_PASSWORD}).encode()
+        req = urllib.request.Request(
+            f"{VIBE_BASE}/api/auth/login",
+            data=login_data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with _vibe_opener.open(req, timeout=10) as resp:
+            if resp.status == 200:
+                _vibe_logged_in = True
+                logger.info("Vibeshine auto-login successful")
+                return True
+    except Exception as e:
+        logger.warning("Vibeshine login failed: %s", e)
+    return False
 
 
 @app.api_route("/api/vibe/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def vibe_proxy(path: str, request: Request) -> Response:
     """Vibeshine API 프록시 — /api/vibe/* → https://localhost:47990/api/*"""
+    global _vibe_logged_in
+    if not _vibe_logged_in:
+        _vibe_login()
+
     url = f"{VIBE_BASE}/api/{path}"
     query = str(request.query_params)
     if query:
@@ -745,7 +780,7 @@ async def vibe_proxy(path: str, request: Request) -> Response:
             method=method,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, context=_ssl_ctx, timeout=30) as resp:
+        with _vibe_opener.open(req, timeout=30) as resp:
             resp_body = resp.read()
             return Response(
                 content=resp_body,
@@ -754,6 +789,9 @@ async def vibe_proxy(path: str, request: Request) -> Response:
             )
     except urllib.error.HTTPError as e:
         resp_body = e.read()
+        # Re-login on 401
+        if e.code == 401 and _vibe_login():
+            return await vibe_proxy(path, request)
         return Response(content=resp_body, status_code=e.code, media_type="application/json")
     except Exception as e:
         logger.warning("Vibeshine proxy error: %s", e)

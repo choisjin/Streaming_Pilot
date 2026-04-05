@@ -56,35 +56,34 @@ export function useInputCapture(streamId: number) {
     if (!el) return
 
     const getPos = (e: MouseEvent) => {
-      // Find video element inside panel
+      // Find video element inside panel — use its display rect
       const video = el.querySelector('video')
-      if (!video || !video.videoWidth || !video.videoHeight) {
+      if (!video) {
         const r = el.getBoundingClientRect()
         return { x: e.clientX - r.left, y: e.clientY - r.top, panelW: r.width, panelH: r.height }
       }
 
-      // Calculate actual video display area (accounting for object-fit: contain)
       const r = video.getBoundingClientRect()
-      const videoAspect = video.videoWidth / video.videoHeight
+      // Use videoWidth if available, otherwise use display size
+      const vw = video.videoWidth || r.width
+      const vh = video.videoHeight || r.height
+      const videoAspect = vw / vh
       const containerAspect = r.width / r.height
 
       let videoX: number, videoY: number, videoW: number, videoH: number
 
       if (videoAspect > containerAspect) {
-        // Video wider than container → letterbox at bottom (object-position: top)
         videoW = r.width
         videoH = r.width / videoAspect
         videoX = r.left
-        videoY = r.top  // top-aligned, no offset
+        videoY = r.top
       } else {
-        // Video taller → pillarbox left/right
         videoH = r.height
         videoW = r.height * videoAspect
         videoX = r.left + (r.width - videoW) / 2
         videoY = r.top
       }
 
-      // Mouse position relative to actual video area
       const x = e.clientX - videoX
       const y = e.clientY - videoY
 
@@ -136,15 +135,20 @@ export function useInputCapture(streamId: number) {
     const getAltBtn = () => getMode() === 'R' ? 'left' : 'right'
 
     const getTouchPos = (t: Touch) => {
-      const r = el.getBoundingClientRect()
       const video = el.querySelector('video')
-      if (!video || !video.videoWidth) return { x: t.clientX - r.left, y: t.clientY - r.top, panelW: r.width, panelH: r.height }
-      const va = video.videoWidth / video.videoHeight
+      if (!video) {
+        const r = el.getBoundingClientRect()
+        return { x: t.clientX - r.left, y: t.clientY - r.top, panelW: r.width, panelH: r.height }
+      }
+      const r = video.getBoundingClientRect()
+      const vw = video.videoWidth || r.width
+      const vh = video.videoHeight || r.height
+      const va = vw / vh
       const ca = r.width / r.height
-      let vx: number, vy: number, vw: number, vh: number
-      if (va > ca) { vw = r.width; vh = r.width / va; vx = r.left; vy = r.top }
-      else { vh = r.height; vw = r.height * va; vx = r.left + (r.width - vw) / 2; vy = r.top }
-      return { x: t.clientX - vx, y: t.clientY - vy, panelW: vw, panelH: vh }
+      let vx: number, vy: number, dw: number, dh: number
+      if (va > ca) { dw = r.width; dh = r.width / va; vx = r.left; vy = r.top }
+      else { dh = r.height; dw = r.height * va; vx = r.left + (r.width - dw) / 2; vy = r.top }
+      return { x: t.clientX - vx, y: t.clientY - vy, panelW: dw, panelH: dh }
     }
 
     const onTouchStart = (e: TouchEvent) => {
