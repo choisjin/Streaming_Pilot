@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import { useWebRTC } from '../hooks/useWebRTC'
+import { useVibeshine } from '../hooks/useVibeshine'
 import { useInputCapture } from '../hooks/useInputCapture'
 import { useStreamStore } from '../stores/streamStore'
 
@@ -12,7 +13,12 @@ interface StreamPanelProps {
 }
 
 export default function StreamPanel({ streamId, title, active = true, lowQuality = false, onClose }: StreamPanelProps) {
-  const { videoRef, connect, disconnect } = useWebRTC(streamId)
+  // Desktop (streamId 0) → Vibeshine WebRTC, Windows → 기존 aiortc WebRTC
+  const webrtc = useWebRTC(streamId)
+  const vibeshine = useVibeshine()
+  const isDesktop = streamId === 0
+  const { videoRef, connect, disconnect } = isDesktop ? vibeshine : webrtc
+
   const { bindPanel } = useInputCapture(streamId)
 
   const allPanels = useStreamStore((s) => s.tabs.flatMap((t) => t.panels))
@@ -32,10 +38,8 @@ export default function StreamPanel({ streamId, title, active = true, lowQuality
   }, [streamId, active, lowQuality])
 
   const handleFocus = useCallback(() => {
-    // 이미 선택된 패널이면 스킵
     if (useStreamStore.getState().activePanel === streamId) return
     setActivePanel(streamId)
-    // 윈도우 스트림이면 서버에 포커스 요청
     if (streamId > 0) {
       fetch(`/api/admin/focus/${streamId}`, { method: 'POST' }).catch(() => {})
     }
@@ -72,7 +76,9 @@ export default function StreamPanel({ streamId, title, active = true, lowQuality
           <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
             status === 'connected' ? 'bg-green-400' : status === 'connecting' ? 'bg-yellow-400' : 'bg-red-400'
           }`} />
-          <span className="truncate text-gray-300" title={title}>{title}</span>
+          <span className="truncate text-gray-300" title={title}>
+            {title}{isDesktop ? ' (Vibeshine)' : ''}
+          </span>
           {lowQuality && <span className="text-[9px] text-yellow-500">(low)</span>}
         </div>
         <div className="flex items-center gap-0.5 ml-1 flex-shrink-0">
@@ -105,7 +111,7 @@ export default function StreamPanel({ streamId, title, active = true, lowQuality
         {status === 'failed' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60">
             <p className="text-red-400 text-xs mb-2">{panel?.connection.error ?? 'Failed'}</p>
-            <button onClick={connect} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs">Retry</button>
+            <button onClick={() => connect()} className="px-3 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs">Retry</button>
           </div>
         )}
         {!active && !lowQuality && (
